@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>NOEMA J.A.R.V.I.S. · Live AI Bridge</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="ambient"></div>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">N</span><div><strong>NOEMA J.A.R.V.I.S.</strong><small>LIVE AI BRIDGE</small></div></div>
+    <div class="live-indicator"><span></span> LOCAL CONTROL</div>
+    <time id="clock">--:--:--</time>
+  </header>
+
+  <main class="dashboard">
+    <section class="panel feed-panel" aria-labelledby="feed-title">
+      <div class="panel-head"><div><span class="eyebrow">INPUT STREAM</span><h2 id="feed-title">Live Events</h2></div><span class="counter" id="event-count">0</span></div>
+      <div id="event-feed" class="event-feed" aria-live="polite">
+        <div class="empty-state">Warte auf TikTok Bridge oder Demo-Event …</div>
+      </div>
+    </section>
+
+    <section class="core-column" aria-labelledby="core-title">
+      <div class="core-meta top"><span>VOICE MATRIX</span><i></i><span id="provider-label">LOCAL</span></div>
+      <div id="jarvis-core" class="jarvis-core state-idle" aria-label="NOEMA AI Aktivitätskern">
+        <div class="reactor-halo" aria-hidden="true"></div>
+        <div class="reactor-ring ring-outer" aria-hidden="true"></div>
+        <div class="reactor-ring ring-data" aria-hidden="true"></div>
+        <div class="reactor-ring ring-mid" aria-hidden="true"></div>
+        <div class="reactor-ring ring-inner" aria-hidden="true"></div>
+        <div class="reactor-crosshair" aria-hidden="true"></div>
+        <div class="energy-spine" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <div class="reactor-center">
+          <small>J.A.R.V.I.S. CORE</small>
+          <strong>AI</strong>
+          <span id="core-signal">STANDBY</span>
+        </div>
+        <div id="gift-alert" class="gift-alert" aria-live="polite">GIFT BOOST</div>
+      </div>
+      <div class="state-wrap"><span class="eyebrow">SYSTEM STATE</span><h1 id="core-title">J.A.R.V.I.S.</h1><div id="jarvis-state" class="state-text">IDLE</div></div>
+      <div class="command-deck" aria-label="J.A.R.V.I.S. Chat-Steuerung">
+        <span class="command-deck-label">CHAT COMMANDS</span>
+        <div class="command-list">
+          <span><b>/frage</b> Thema</span>
+          <span><b>/musik</b> Song</span>
+          <span><b>/album</b> Album</span>
+          <span><b>/pause</b></span>
+          <span><b>/weiter</b></span>
+          <span><b>/skip</b></span>
+          <span><b>/lauter</b></span>
+          <span><b>/leiser</b></span>
+        </div>
+      </div>
+      <div class="dialog-card">
+        <span class="eyebrow">ACTIVE MESSAGE</span>
+        <p id="current-question">Keine offene Verarbeitung.</p>
+        <span class="eyebrow answer-label">LIVE RESPONSE</span>
+        <p id="current-answer" class="answer">Bereit.</p>
+      </div>
+      <div class="engagement-strip" aria-label="Gift Energie">
+        <div><span>GIFT BOOSTS</span><strong id="gift-count">0</strong></div>
+        <div class="energy-readout"><span>DIAMOND ENERGY</span><strong id="diamond-count">0</strong></div>
+      </div>
+      <div class="core-meta bottom"><span id="model-label">MODEL NOT SET</span><i></i><span id="latency-label">— MS</span></div>
+    </section>
+
+    <section class="panel status-panel" aria-labelledby="status-title">
+      <div class="panel-head"><div><span class="eyebrow">TELEMETRY</span><h2 id="status-title">Systemstatus</h2></div></div>
+      <div class="status-list">
+        <div class="status-row"><span class="status-dot" id="bridge-dot"></span><div><small>TIKTOK BRIDGE</small><strong id="bridge-status">OFFLINE</strong></div></div>
+        <div class="status-row"><span class="status-dot" id="llm-dot"></span><div><small>LLM ENDPOINT</small><strong id="llm-status">OFFLINE</strong></div></div>
+        <div class="status-row"><span class="status-dot" id="internet-dot"></span><div><small>INTERNET SEARCH</small><strong id="internet-status">DISABLED</strong></div></div>
+        <div class="metric"><span>Provider</span><strong id="provider-status">LOCAL</strong></div>
+        <div class="metric"><span>Modell</span><strong id="model-status">—</strong></div>
+        <div class="metric"><span>TTS</span><strong id="tts-status">BEREIT</strong></div>
+        <div class="metric"><span>Queue</span><strong id="queue-status">0</strong></div>
+        <div class="metric"><span>LLM Latenz</span><strong id="latency-status">—</strong></div>
+      </div>
+      <div id="error-box" class="error-box" hidden><span>FEHLER</span><p id="error-text"></p></div>
+      <div class="queue-preview"><span class="eyebrow">NEXT IN QUEUE</span><div id="queue-preview">Queue leer</div></div>
+    </section>
+  </main>
+
+  <footer class="control-dock">
+    <button id="pause-btn" class="control primary" type="button"><span>Ⅱ</span>AI pausieren</button>
+    <button id="skip-btn" class="control" type="button"><span>››</span>Frage skippen</button>
+    <button id="clear-btn" class="control" type="button"><span>×</span>Queue leeren</button>
+    <button id="tts-stop-btn" class="control danger" type="button"><span>■</span>TTS Stop</button>
+    <div class="provider-switch" id="provider-switch" role="group" aria-label="LLM-Modus">
+      <span class="provider-switch-title">MODE</span>
+      <button id="provider-cloud-btn" data-provider="cloud" type="button" aria-pressed="false"><b>CLOUD</b><small id="provider-cloud-model">FALLBACK</small></button>
+      <button id="provider-local-btn" data-provider="local" type="button" aria-pressed="true"><b>LOCAL</b><small id="provider-local-model">QWEN</small></button>
+    </div>
+    <button id="focus-btn" class="control show-mode" type="button"><span>◎</span>TikTok Show</button>
+    <button id="media-btn" class="control" type="button"><span>▶</span>Internet &amp; Musik</button>
+    <button id="settings-btn" class="control" type="button"><span>⚙</span>Settings</button>
+    <div class="demo-controls"><button id="demo-question" type="button">+ Demo Frage</button><button id="demo-gift" type="button">+ Demo Rose</button><button id="demo-donut" type="button">+ Demo Donut</button></div>
+  </footer>
+
+  <dialog id="settings-dialog">
+    <form id="settings-form" method="dialog">
+      <div class="dialog-head"><div><span class="eyebrow">RUNTIME CONFIGURATION</span><h2>Settings</h2></div><button class="icon-btn" value="cancel" aria-label="Schließen">×</button></div>
+      <div class="form-grid">
+        <label class="wide">TikTok Bridge URL<input name="tiktok_bridge_url" type="url" required></label>
+        <fieldset class="provider-mode" aria-label="Aktiver LLM-Modus">
+          <legend>LLM MODUS</legend>
+          <label><input name="provider" value="cloud" type="radio"><span><b>CLOUD</b><small id="settings-cloud-model">FALLBACK</small></span></label>
+          <label><input name="provider" value="local" type="radio"><span><b>LOCAL</b><small id="settings-local-model">QWEN</small></span></label>
+        </fieldset>
+        <label>LLM Endpoint<input name="llm_base_url" type="url" required></label>
+        <label>Model ID<input name="model" autocomplete="off" placeholder="Loaded model identifier"></label>
+        <label>API Key<input name="llm_api_key" type="password" autocomplete="new-password" placeholder="Unverändert lassen"></label>
+        <label class="wide">System Prompt<textarea name="system_prompt" maxlength="8000" rows="9" required></textarea></label>
+        <label>Context Length<input name="context_length" type="number" min="512" max="131072"></label>
+        <label>Max Output Tokens<input name="max_output_tokens" type="number" min="1" max="4096"></label>
+        <label>Temperature<input name="temperature" type="number" min="0" max="2" step="0.1"></label>
+        <label>Timeout (s)<input name="timeout" type="number" min="0.1" max="300" step="0.1"></label>
+        <label>Gift-Fenster (s)<input name="gift_grace_seconds" type="number" min="0" max="5" step="0.05"></label>
+        <label class="toggle"><input name="stream" type="checkbox"><span></span>Streaming</label>
+        <label class="toggle"><input name="reasoning" type="checkbox"><span></span>Reasoning</label>
+        <label class="toggle"><input name="cloud_fallback" type="checkbox"><span></span>Provider Fallback</label>
+        <div class="section-line wide">SILENT USER MEMORY</div>
+        <label class="toggle"><input name="memory_enabled" type="checkbox"><span></span>Memory aktiv</label>
+        <label>Letzte Turns<input name="memory_recent_turns" type="number" min="1" max="20"></label>
+        <label>RAM User Limit<input name="memory_max_users_ram" type="number" min="1" max="5000"></label>
+        <label>Disk Turns/User<input name="memory_max_turns_per_user_disk" type="number" min="1" max="1000"></label>
+        <label>Retention Tage<input name="memory_retention_days" type="number" min="0" max="3650"></label>
+        <div class="section-line wide">INTERNET &amp; YOUTUBE</div>
+        <label class="toggle"><input name="internet_enabled" type="checkbox"><span></span>Brave-Suche aktiv</label>
+        <label class="toggle"><input name="youtube_enabled" type="checkbox"><span></span>YouTube aktiv</label>
+        <label class="toggle"><input name="interactive_music_enabled" type="checkbox"><span></span>Interaktive Musikwünsche</label>
+        <label class="wide">Brave API Key<input name="brave_api_key" type="password" autocomplete="new-password" placeholder="Unverändert lassen"></label>
+        <label>Such-Timeout (s)<input name="search_timeout" type="number" min="0.1" max="30" step="0.1"></label>
+        <label>Treffer pro Suche<input name="search_result_limit" type="number" min="1" max="10"></label>
+        <label>Musikwunsch-Cooldown (s)<input name="music_request_cooldown" type="number" min="5" max="300" step="1"></label>
+        <div class="section-line wide">SPOTIFY CONNECT · PRIVATE STEUERUNG</div>
+        <label class="toggle"><input name="spotify_enabled" type="checkbox"><span></span>Spotify Connect aktiv</label>
+        <label>Musikziel<select name="music_backend"><option value="youtube">YouTube Player</option><option value="spotify">Spotify Connect</option></select></label>
+        <label class="wide">Spotify Client ID<input name="spotify_client_id" autocomplete="off" placeholder="Spotify Developer App Client ID"></label>
+        <p class="settings-hint wide">Redirect URI in Spotify eintragen: <code>http://127.0.0.1:8770/api/spotify/callback</code></p>
+        <div class="section-line wide">OPTIONAL CLOUD PROVIDER</div>
+        <label>Cloud Endpoint<input name="cloud_base_url" type="url"></label>
+        <label>Cloud Model<input name="cloud_model" autocomplete="off"></label>
+        <label class="wide">Cloud API Key<input name="cloud_api_key" type="password" autocomplete="new-password" placeholder="Unverändert lassen"></label>
+        <label>OpenRouter HTTP-Referer<input name="openrouter_http_referer" autocomplete="off"></label>
+        <label>OpenRouter X-Title<input name="openrouter_title" autocomplete="off"></label>
+      </div>
+      <p id="settings-message" class="form-message"></p>
+      <div class="dialog-actions"><button value="cancel" class="control" type="button" id="cancel-settings">Abbrechen</button><button class="control diagnostic" type="button" id="test-llm">Speichern &amp; LLM testen</button><button class="control primary" type="submit">Speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="media-dialog" class="media-dialog">
+    <div class="dialog-head"><div><span class="eyebrow">CONTROLLED INTERNET ACCESS</span><h2>Internet &amp; Musik</h2></div><button id="close-media" class="icon-btn" type="button" aria-label="Schließen">×</button></div>
+    <form id="search-form" class="search-bar">
+      <select id="search-kind" aria-label="Suchtyp"><option value="web">Internet</option><option value="youtube">YouTube</option><option value="spotify">Spotify Connect</option></select>
+      <input id="search-query" type="search" maxlength="400" autocomplete="off" placeholder="Wonach soll J.A.R.V.I.S. suchen?" required>
+      <button class="control primary" type="submit">Suchen</button>
+    </form>
+    <p id="search-message" class="form-message"></p>
+    <section class="spotify-connect" aria-label="Private Spotify Connect Steuerung">
+      <p id="spotify-message" class="form-message" aria-live="polite"></p>
+      <div class="spotify-summary">
+        <span id="spotify-dot" class="status-dot"></span>
+        <div><span class="eyebrow">SPOTIFY CONNECT · PRIVATE</span><strong id="spotify-now">Nicht verbunden</strong><small id="spotify-device">Kein Gerät</small></div>
+      </div>
+      <div class="spotify-actions">
+        <button id="spotify-connect" class="control primary" type="button">Spotify verbinden</button>
+        <button id="spotify-pause" class="control" type="button">Pause</button>
+        <button id="spotify-resume" class="control" type="button">Weiter</button>
+        <button id="spotify-skip" class="control" type="button">Skip</button>
+        <button id="spotify-quieter" class="control" type="button">−</button>
+        <button id="spotify-louder" class="control" type="button">+</button>
+        <button id="spotify-disconnect" class="control danger" type="button">Trennen</button>
+      </div>
+      <p class="media-note">Steuert dein privates Spotify-Connect-Gerät. NOEMA überträgt oder mischt keinen Spotify-Ton in TikTok.</p>
+    </section>
+    <div class="media-grid">
+      <section class="search-results-wrap"><span class="eyebrow">SEARCH RESULTS</span><div id="search-results" class="search-results"><div class="empty-state">Noch keine Suche.</div></div></section>
+      <section class="player-wrap"><span class="eyebrow">YOUTUBE PLAYER</span><div id="youtube-player" class="youtube-player"></div><div class="player-controls"><button id="music-play" class="control" type="button">Play</button><button id="music-pause" class="control" type="button">Pause</button><button id="music-stop" class="control danger" type="button">Stop</button><a id="music-open-youtube" class="control" href="#" target="_blank" rel="noopener" hidden>Auf YouTube öffnen</a><label>Lautstärke <input id="music-volume" type="range" min="0" max="100" value="35"></label></div><p class="media-note">Im interaktiven Modus dürfen Zuschauer Musikwünsche starten. Stop, Pause und Lautstärke bleiben bei der Streamerin. Verwende ausschließlich Inhalte, für die du Streaming-Rechte besitzt.</p></section>
+    </div>
+  </dialog>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

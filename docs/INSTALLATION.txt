@@ -1,0 +1,48 @@
+NOEMA J.A.R.V.I.S. – Installation unter Windows 10/11 (64 Bit)
+
+NEUINSTALLATION
+1. NOEMA-JARVIS-Setup-0.5.2.exe starten.
+2. Installationsordner bestätigen und Desktop-Symbol aktiviert lassen.
+3. "NOEMA 2 - JARVIS Dashboard" öffnen.
+
+Programm und Python-Laufzeit sind enthalten. Python, Git und manuelles
+Kopieren sind für die Installation nicht erforderlich.
+Dashboard: http://127.0.0.1:8770
+Standardordner: %LOCALAPPDATA%\Programs\NOEMA\JARVIS
+
+EINMALIG EINRICHTEN
+Im Dashboard "Settings" öffnen:
+- YouTube: Brave-Suche, YouTube und interaktive Musikwünsche aktivieren,
+  eigenen Brave-API-Key eintragen und Musikziel YouTube auswählen.
+- KI-Antworten: eigenen lokalen oder Cloud-Endpunkt konfigurieren.
+- TikTok/TTS: Adresse der vorhandenen TikTok-Bridge konfigurieren.
+
+LM Studio, KI-Modelle, TikTok-Bridge und persönliche Konten/API-Keys sind
+separate Dienste und nicht Bestandteil dieses JARVIS-Installers.
+Spotify ist optional und für YouTube nicht erforderlich.
+
+UPDATE
+JARVIS vorher schließen. Bei Installation in denselben Ordner bleiben
+runtime-settings.json und data/ erhalten.
+Bei einem bisherigen GitHub-Projekt kann im Installer dessen vorhandener
+Ordner gewählt werden (z. B. C:\GitHub\noema-live-ai-bridge), sofern er für
+deinen Windows-Benutzer beschreibbar ist.
+Alternativ den Standardordner verwenden und bei geschlossenem JARVIS deine
+runtime-settings.json in diesen neuen Installationsordner kopieren.
+
+PORTABLE ZIP
+Das vollständige ZIP enthält Source, Tests, Starter und dist\NOEMA-JARVIS.exe.
+In einen beschreibbaren Ordner entpacken und scripts\start-noema-wk02.cmd
+starten. Für die einfache Installation die Setup-EXE verwenden.
+
+DATEN
+Persönliche Einstellungen, Secrets und Chat-Daten werden nicht mitgeliefert.
+Die Deinstallation entfernt Programmdateien; nachträglich erzeugte
+Einstellungen und Daten bleiben erhalten.
+
+STAND
+Musikreparatur aus Commit 8e4bbc07c84f12dcb7c7b6ecce776423e25f4aa7.
+118 Python- und 19 JavaScript-Player-Tests bestanden; Windows-App gestartet.
+Die Player-Tests simulieren IFrame-Ereignisse. Live-Suchen waren in der
+Build-Umgebung durch Netzwerkfehler blockiert; der Nutzer meldet die App
+anschließend als funktionierend.

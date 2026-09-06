@@ -1,0 +1,50 @@
+name: Windows installer and ZIP
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install build dependencies
+        run: python -m pip install ".[build,dev]"
+      - name: Python tests
+        run: python -m pytest -q
+      - name: Player tests
+        run: node --test tests/test_youtube_player.cjs
+      - name: Build application
+        run: python -m PyInstaller --noconfirm NOEMA-JARVIS.spec
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
+          ./scripts/build-installer.ps1 -Compiler $compiler
+      - name: Package complete portable distribution
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release, package | Out-Null
+          git archive --format=zip HEAD -o source.zip
+          Expand-Archive source.zip package
+          New-Item -ItemType Directory -Force package/dist | Out-Null
+          Copy-Item dist/NOEMA-JARVIS.exe package/dist/
+          Copy-Item dist-setup/*.exe release/
+          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.5.2.zip
+          Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content release/SHA256.txt
+      - name: Publish downloads
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "windows-0.5.2-${{ github.run_number }}"
+          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.2 Windows Setup" --notes "Setup-EXE mit Desktop-Verknuepfung und vollstaendiges portables ZIP. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat. Eigene Zugangsdaten in den Einstellungen eintragen."
