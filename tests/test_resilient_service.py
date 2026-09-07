@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.llm import LLMProvider, ProviderError
+from app.llm import LLMProvider, ProviderError, ProviderRequest
 from app.models import JarvisState, QueuedQuestion
 from app.resilient_service import LiveAIService, RetryingProvider
 from app.service import LiveAIService as BaseLiveAIService
@@ -33,6 +33,21 @@ class MidStreamFailureProvider(LLMProvider):
         self.calls += 1
         yield "teilweise"
         raise ProviderError("LLM request failed (RemoteProtocolError)")
+
+    async def health(self) -> bool:
+        return True
+
+
+class ModelProvider(LLMProvider):
+    def __init__(self, model: str, seen: list[str]) -> None:
+        self.model = model
+        self.seen = seen
+
+    async def generate(self, question: str):
+        self.seen.append(self.model)
+        if self.model == "deepseek/deepseek-v4-flash-latest":
+            raise ProviderError("LLM request failed (HTTPStatusError)")
+        yield "Qwen übernimmt."
 
     async def health(self) -> bool:
         return True
@@ -75,6 +90,32 @@ async def test_midstream_failure_is_not_retried_to_avoid_duplicate_output() -> N
 
     assert chunks == ["teilweise"]
     assert inner.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_deepseek_cloud_failure_falls_back_to_qwen() -> None:
+    seen: list[str] = []
+
+    def factory(request: ProviderRequest) -> LLMProvider:
+        return ModelProvider(request.model, seen)
+
+    service = LiveAIService(
+        BridgeSettings(
+            connect_on_start=False,
+            provider="cloud",
+            cloud_model="deepseek/deepseek-v4-flash-latest",
+        ),
+        provider_factory=factory,
+    )
+
+    provider = service._provider("cloud")
+    chunks = [chunk async for chunk in provider.generate("Test")]
+
+    assert chunks == ["Qwen übernimmt."]
+    assert seen == [
+        "deepseek/deepseek-v4-flash-latest",
+        "qwen/qwen3.7-flash",
+    ]
 
 
 @pytest.mark.asyncio
