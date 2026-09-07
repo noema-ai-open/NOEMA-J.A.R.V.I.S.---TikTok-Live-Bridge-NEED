@@ -1,5 +1,5 @@
 #ifndef PackageVersion
-  #define PackageVersion "0.5.5"
+  #define PackageVersion "0.5.6"
 #endif
 #ifndef PackageOutput
   #define PackageOutput "..\dist-setup"
