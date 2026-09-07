@@ -29,11 +29,11 @@ jobs:
         run: |
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
-          ./scripts/build-installer.ps1 -Version 0.5.5 -Compiler $compiler
+          ./scripts/build-installer.ps1 -Version 0.5.6 -Compiler $compiler
       - name: Clean install smoke test
         shell: pwsh
         run: |
-          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.5.5.exe | Select-Object -First 1
+          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.5.6.exe | Select-Object -First 1
           if (-not $setup) { throw "Setup EXE fehlt." }
           $target = Join-Path $env:RUNNER_TEMP "noema-jarvis-clean"
           if (Test-Path $target) { Remove-Item $target -Recurse -Force }
@@ -72,12 +72,12 @@ jobs:
           New-Item -ItemType Directory -Force package/dist | Out-Null
           Copy-Item dist/NOEMA-JARVIS.exe package/dist/
           Copy-Item dist-setup/*.exe release/
-          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.5.5.zip
+          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.5.6.zip
           Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content release/SHA256.txt
       - name: Publish downloads
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "windows-0.5.5-${{ github.run_number }}"
-          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.5 Windows Setup" --notes "Setup-EXE mit Desktop-Verknuepfung und vollstaendigem portablen ZIP. TikTok-Musikwünsche werden vor der AI-Queue isoliert, bekommen eine kurze TTS-Bestaetigung und eine neue Suche stoppt den laufenden YouTube-Titel nicht mehr vorzeitig. Cloud-ConnectError werden automatisch erneut versucht; ein Providerfehler setzt die Live-Verarbeitung nicht dauerhaft auf Pause. JARVIS reagiert lebendiger und darf gelegentlich freundlich zu Like, Follow oder Teilen motivieren. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat."
+          $tag = "windows-0.5.6-${{ github.run_number }}"
+          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.6 Windows Setup" --notes "Setup-EXE mit Desktop-Verknuepfung und vollstaendigem portablen ZIP. Ein ausgewaehltes Cloud-Modell wie DeepSeek V4 Flash wird zuerst verwendet; wenn es vor der ersten Textausgabe fehlschlaegt, versucht JARVIS automatisch qwen/qwen3.7-flash als zweiten Cloud-Pfad. Transportfehler werden zuvor kurz erneut versucht. Kein Fallback nach bereits ausgegebenem Teiltext, damit keine doppelten Antworten entstehen. Die Musik-/TikTok-Isolation und die lebendigere Live-Host-Persona aus 0.5.5 bleiben erhalten. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat."
