@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
@@ -35,6 +36,20 @@ class MidStreamFailureProvider(LLMProvider):
 
     async def health(self) -> bool:
         return True
+
+
+class AckTTS:
+    def __init__(self) -> None:
+        self.spoken: list[str] = []
+
+    async def speak(self, text: str, timeout: float = 10.0) -> None:
+        self.spoken.append(text)
+
+    async def state(self) -> bool:
+        return False
+
+    async def stop(self) -> None:
+        return None
 
 
 @pytest.mark.asyncio
@@ -98,9 +113,12 @@ async def test_natural_language_music_request_never_enters_ai_queue() -> None:
             internet_enabled=True,
             youtube_enabled=True,
             interactive_music_enabled=True,
+            music_request_cooldown=0,
             brave_api_key="test-token",
         )
     )
+    tts = AckTTS()
+    service.tts = tts
     subscriber = await service.bus.subscribe()
 
     await service.add_mock_event(
@@ -109,6 +127,7 @@ async def test_natural_language_music_request_never_enters_ai_queue() -> None:
         "spiele chillout musik",
         "music-user",
     )
+    await asyncio.sleep(0)
 
     messages: list[dict[str, object]] = []
     while not subscriber.empty():
@@ -119,3 +138,34 @@ async def test_natural_language_music_request_never_enters_ai_queue() -> None:
     assert service.current_question is None
     assert service.paused is False
     assert service.state == JarvisState.IDLE
+    assert tts.spoken == ["Alles klar, der Musikwunsch ist angekommen."]
+
+
+@pytest.mark.asyncio
+async def test_media_request_is_never_woken_into_processor_even_when_service_is_running() -> None:
+    service = LiveAIService(
+        BridgeSettings(
+            connect_on_start=False,
+            internet_enabled=True,
+            youtube_enabled=True,
+            interactive_music_enabled=True,
+            music_request_cooldown=0,
+            brave_api_key="test-token",
+        )
+    )
+    service.tts = AckTTS()
+    await service.start()
+    try:
+        await service.add_mock_event(
+            "chat_message",
+            "Music Fan",
+            "spiele musik youtube chillout",
+            "music-user",
+        )
+        await asyncio.sleep(0.05)
+        assert len(service.questions) == 0
+        assert service.current_question is None
+        assert service.paused is False
+        assert service.state == JarvisState.IDLE
+    finally:
+        await service.stop()
