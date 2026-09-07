@@ -16,6 +16,7 @@ from app.settings_store import RuntimeSettingsStore
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 _CHAT_MUSIC_GUARD = '<script src="/static/chat-music-guard.js"></script>'
+_MUSIC_CONTINUITY_GUARD = '<script src="/static/music-continuity-guard.js"></script>'
 
 
 def create_app(
@@ -52,8 +53,9 @@ def create_app(
     @app.get("/", include_in_schema=False)
     async def index() -> HTMLResponse:
         html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
-        if _CHAT_MUSIC_GUARD not in html:
-            html = html.replace("</body>", f"{_CHAT_MUSIC_GUARD}</body>")
+        guards = "".join((_CHAT_MUSIC_GUARD, _MUSIC_CONTINUITY_GUARD))
+        if _CHAT_MUSIC_GUARD not in html or _MUSIC_CONTINUITY_GUARD not in html:
+            html = html.replace("</body>", f"{guards}</body>")
         return HTMLResponse(html)
 
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
