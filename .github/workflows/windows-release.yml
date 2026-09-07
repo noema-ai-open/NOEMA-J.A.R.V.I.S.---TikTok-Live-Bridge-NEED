@@ -29,11 +29,11 @@ jobs:
         run: |
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
-          ./scripts/build-installer.ps1 -Version 0.5.3 -Compiler $compiler
+          ./scripts/build-installer.ps1 -Version 0.5.4 -Compiler $compiler
       - name: Clean install smoke test
         shell: pwsh
         run: |
-          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.5.3.exe | Select-Object -First 1
+          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.5.4.exe | Select-Object -First 1
           if (-not $setup) { throw "Setup EXE fehlt." }
           $target = Join-Path $env:RUNNER_TEMP "noema-jarvis-clean"
           if (Test-Path $target) { Remove-Item $target -Recurse -Force }
@@ -68,12 +68,12 @@ jobs:
           New-Item -ItemType Directory -Force package/dist | Out-Null
           Copy-Item dist/NOEMA-JARVIS.exe package/dist/
           Copy-Item dist-setup/*.exe release/
-          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.5.3.zip
+          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.5.4.zip
           Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content release/SHA256.txt
       - name: Publish downloads
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "windows-0.5.3-${{ github.run_number }}"
-          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.3 Windows Setup" --notes "Setup-EXE mit Desktop-Verknuepfung und vollstaendiges portables ZIP. Chat-Musikwünsche bleiben unsichtbar im Stream-Capture. Transiente LLM-Fehler pausieren die Verarbeitung nicht dauerhaft. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat. Eigene Zugangsdaten in den Einstellungen eintragen."
+          $tag = "windows-0.5.4-${{ github.run_number }}"
+          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.4 Windows Setup" --notes "Setup-EXE mit Desktop-Verknuepfung und vollstaendiges portables ZIP. TikTok-Musikwünsche laufen im Hintergrund ohne sichtbares Medienfenster und werden nicht an die AI-Queue weitergereicht. Transiente LLM-Fehler pausieren die Verarbeitung nicht dauerhaft. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat. Eigene Zugangsdaten in den Einstellungen eintragen."
