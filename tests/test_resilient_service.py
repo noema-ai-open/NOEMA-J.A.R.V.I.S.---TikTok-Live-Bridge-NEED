@@ -2,10 +2,64 @@ from datetime import datetime, timezone
 
 import pytest
 
+from app.llm import LLMProvider, ProviderError
 from app.models import JarvisState, QueuedQuestion
-from app.resilient_service import LiveAIService
+from app.resilient_service import LiveAIService, RetryingProvider
 from app.service import LiveAIService as BaseLiveAIService
 from app.settings import BridgeSettings
+
+
+class FlakyConnectProvider(LLMProvider):
+    def __init__(self, failures: int) -> None:
+        self.failures = failures
+        self.calls = 0
+
+    async def generate(self, question: str):
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise ProviderError("LLM request failed (ConnectError)")
+        yield "wieder online"
+
+    async def health(self) -> bool:
+        return True
+
+
+class MidStreamFailureProvider(LLMProvider):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate(self, question: str):
+        self.calls += 1
+        yield "teilweise"
+        raise ProviderError("LLM request failed (RemoteProtocolError)")
+
+    async def health(self) -> bool:
+        return True
+
+
+@pytest.mark.asyncio
+async def test_transient_connect_error_is_retried_before_fallback() -> None:
+    inner = FlakyConnectProvider(failures=2)
+    provider = RetryingProvider(inner, attempts=3)
+
+    chunks = [chunk async for chunk in provider.generate("Hallo")]
+
+    assert chunks == ["wieder online"]
+    assert inner.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_midstream_failure_is_not_retried_to_avoid_duplicate_output() -> None:
+    inner = MidStreamFailureProvider()
+    provider = RetryingProvider(inner, attempts=3)
+
+    chunks: list[str] = []
+    with pytest.raises(ProviderError, match="RemoteProtocolError"):
+        async for chunk in provider.generate("Hallo"):
+            chunks.append(chunk)
+
+    assert chunks == ["teilweise"]
+    assert inner.calls == 1
 
 
 @pytest.mark.asyncio
