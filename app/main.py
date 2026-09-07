@@ -4,17 +4,18 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api import router
-from app.service import LiveAIService
+from app.resilient_service import LiveAIService
 from app.settings import BridgeSettings
 from app.settings_store import RuntimeSettingsStore
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+_CHAT_MUSIC_GUARD = '<script src="/static/chat-music-guard.js"></script>'
 
 
 def create_app(
@@ -49,8 +50,11 @@ def create_app(
     app.include_router(router)
 
     @app.get("/", include_in_schema=False)
-    async def index() -> FileResponse:
-        return FileResponse(FRONTEND_DIR / "index.html")
+    async def index() -> HTMLResponse:
+        html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+        if _CHAT_MUSIC_GUARD not in html:
+            html = html.replace("</body>", f"{_CHAT_MUSIC_GUARD}</body>")
+        return HTMLResponse(html)
 
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
     return app
