@@ -21,7 +21,7 @@ jobs:
       - name: Python tests
         run: python -m pytest -q
       - name: Player and capture-guard tests
-        run: node --test tests/test_youtube_player.cjs tests/test_chat_music_guard.cjs
+        run: node --test tests/test_youtube_player.cjs tests/test_chat_music_guard.cjs tests/test_music_continuity_guard.cjs
       - name: Build application
         run: python -m PyInstaller --noconfirm NOEMA-JARVIS.spec
       - name: Build installer
@@ -29,11 +29,11 @@ jobs:
         run: |
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
-          ./scripts/build-installer.ps1 -Version 0.5.4 -Compiler $compiler
+          ./scripts/build-installer.ps1 -Version 0.5.5 -Compiler $compiler
       - name: Clean install smoke test
         shell: pwsh
         run: |
-          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.5.4.exe | Select-Object -First 1
+          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.5.5.exe | Select-Object -First 1
           if (-not $setup) { throw "Setup EXE fehlt." }
           $target = Join-Path $env:RUNNER_TEMP "noema-jarvis-clean"
           if (Test-Path $target) { Remove-Item $target -Recurse -Force }
@@ -53,8 +53,12 @@ jobs:
             }
             if (-not $ok) { throw "Installierte Anwendung wurde nicht gesund." }
             $dashboard = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8770/" -TimeoutSec 3
-            if ($dashboard.StatusCode -ne 200 -or $dashboard.Content -notmatch "chat-music-guard.js") {
-              throw "Dashboard oder Capture-Guard fehlt."
+            if (
+              $dashboard.StatusCode -ne 200 -or
+              $dashboard.Content -notmatch "chat-music-guard.js" -or
+              $dashboard.Content -notmatch "music-continuity-guard.js"
+            ) {
+              throw "Dashboard oder Musik-Guards fehlen."
             }
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -68,12 +72,12 @@ jobs:
           New-Item -ItemType Directory -Force package/dist | Out-Null
           Copy-Item dist/NOEMA-JARVIS.exe package/dist/
           Copy-Item dist-setup/*.exe release/
-          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.5.4.zip
+          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.5.5.zip
           Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content release/SHA256.txt
       - name: Publish downloads
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "windows-0.5.4-${{ github.run_number }}"
-          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.4 Windows Setup" --notes "Setup-EXE mit Desktop-Verknuepfung und vollstaendiges portables ZIP. TikTok-Musikwünsche laufen im Hintergrund ohne sichtbares Medienfenster und werden nicht an die AI-Queue weitergereicht. Transiente LLM-Fehler pausieren die Verarbeitung nicht dauerhaft. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat. Eigene Zugangsdaten in den Einstellungen eintragen."
+          $tag = "windows-0.5.5-${{ github.run_number }}"
+          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.5 Windows Setup" --notes "Setup-EXE mit Desktop-Verknuepfung und vollstaendigem portablen ZIP. TikTok-Musikwünsche werden vor der AI-Queue isoliert, bekommen eine kurze TTS-Bestaetigung und eine neue Suche stoppt den laufenden YouTube-Titel nicht mehr vorzeitig. Cloud-ConnectError werden automatisch erneut versucht; ein Providerfehler setzt die Live-Verarbeitung nicht dauerhaft auf Pause. JARVIS reagiert lebendiger und darf gelegentlich freundlich zu Like, Follow oder Teilen motivieren. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat."
