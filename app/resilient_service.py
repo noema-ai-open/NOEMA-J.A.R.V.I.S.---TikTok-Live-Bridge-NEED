@@ -4,7 +4,13 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 
-from app.llm import LLMProvider, ProviderError, ProviderTimeout
+from app.llm import (
+    LLMProvider,
+    OpenAICompatibleProvider,
+    ProviderError,
+    ProviderRequest,
+    ProviderTimeout,
+)
 from app.models import JarvisState, QueuedQuestion, TikTokEvent
 from app.music import MusicCommand, extract_music_request, parse_music_command
 from app.service import LiveAIService as BaseLiveAIService
@@ -17,6 +23,8 @@ _TRANSIENT_MARKERS = (
     "RemoteProtocolError",
     "PoolTimeout",
 )
+
+_CLOUD_BACKUP_MODEL = "qwen/qwen3.7-flash"
 
 
 def _is_transient_provider_error(exc: ProviderError) -> bool:
@@ -56,12 +64,77 @@ class RetryingProvider(LLMProvider):
             return False
 
 
+class FailoverProvider(LLMProvider):
+    """Try providers in order, but only fail over before any public text was emitted."""
+
+    def __init__(self, providers: tuple[LLMProvider, ...]) -> None:
+        self.providers = providers
+
+    async def generate(self, question: str) -> AsyncIterator[str]:
+        failure: ProviderError | None = None
+        for provider in self.providers:
+            emitted = False
+            try:
+                async for chunk in provider.generate(question):
+                    emitted = True
+                    yield chunk
+                return
+            except ProviderError as exc:
+                if emitted:
+                    raise
+                failure = exc
+        raise failure or ProviderError("No LLM provider available")
+
+    async def health(self) -> bool:
+        for provider in self.providers:
+            try:
+                if await provider.health():
+                    return True
+            except ProviderError:
+                continue
+        return False
+
+
 class LiveAIService(BaseLiveAIService):
-    """Live service with retry, non-blocking recovery and strict media isolation."""
+    """Live service with retry, cloud model failover and strict media isolation."""
+
+    def _cloud_backup_provider(self) -> LLMProvider | None:
+        primary_model = self.settings.cloud_model.strip()
+        if not primary_model or primary_model == _CLOUD_BACKUP_MODEL:
+            return None
+
+        request = self._provider_request("cloud")
+        backup_request = ProviderRequest(
+            base_url=request.base_url,
+            api_key=request.api_key,
+            model=_CLOUD_BACKUP_MODEL,
+            temperature=request.temperature,
+            context_length=request.context_length,
+            max_output_tokens=request.max_output_tokens,
+            stream=request.stream,
+            reasoning=request.reasoning,
+            timeout=request.timeout,
+            system_prompt=request.system_prompt,
+            http_referer=request.http_referer,
+            x_title=request.x_title,
+        )
+        if self.provider_factory is not None:
+            provider = self.provider_factory(backup_request)
+        else:
+            provider = OpenAICompatibleProvider(backup_request)
+        return RetryingProvider(provider, attempts=2)
 
     def _provider(self, kind: str) -> LLMProvider:
-        provider = super()._provider(kind)
-        return RetryingProvider(provider, attempts=3 if kind == "cloud" else 2)
+        provider = RetryingProvider(
+            super()._provider(kind), attempts=3 if kind == "cloud" else 2
+        )
+        if kind != "cloud":
+            return provider
+
+        backup = self._cloud_backup_provider()
+        if backup is None:
+            return provider
+        return FailoverProvider((provider, backup))
 
     async def handle_event(
         self, event: TikTokEvent, *, allow_simulated: bool = False
