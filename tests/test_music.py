@@ -1,6 +1,15 @@
 from app.music import MusicCommand, extract_music_request, parse_music_command
 
 
+def test_youtube_shortcuts_and_common_typos() -> None:
+    for message in ("YouTube", "yxoutube", "spiele youtuve", "spiele Musik"):
+        assert extract_music_request(message) == "Musik"
+    assert extract_music_request("yxoutube Nightcall") == "Nightcall"
+    assert extract_music_request("spiele 80er Musik auf yxoutube") == "80er Musik"
+    assert extract_music_request("Was ist YouTube?") is None
+    assert extract_music_request("YouTube pause") is None
+
+
 def test_detects_german_and_english_music_requests() -> None:
     assert extract_music_request("Spiel bitte Chillout-Musik auf YouTube") == "Chillout-Musik"
     assert (
