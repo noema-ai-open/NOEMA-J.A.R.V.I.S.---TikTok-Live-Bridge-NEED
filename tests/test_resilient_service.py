@@ -113,7 +113,7 @@ async def test_natural_language_music_request_never_enters_ai_queue() -> None:
             internet_enabled=True,
             youtube_enabled=True,
             interactive_music_enabled=True,
-            music_request_cooldown=0,
+            music_request_cooldown=5,
             brave_api_key="test-token",
         )
     )
@@ -149,7 +149,7 @@ async def test_media_request_is_never_woken_into_processor_even_when_service_is_
             internet_enabled=True,
             youtube_enabled=True,
             interactive_music_enabled=True,
-            music_request_cooldown=0,
+            music_request_cooldown=5,
             brave_api_key="test-token",
         )
     )
