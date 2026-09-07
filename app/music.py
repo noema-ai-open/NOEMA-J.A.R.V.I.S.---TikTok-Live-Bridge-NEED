@@ -82,8 +82,13 @@ def parse_music_command(message: str) -> MusicCommand | None:
 def extract_music_request(message: str) -> str | None:
     """Return a bounded search query only for an explicit music play request."""
     cleaned = " ".join(message.strip().split())
+    cleaned = re.sub(r"\b(?:yxoutube|youtuve|you\s+tube)\b", "youtube", cleaned, flags=re.IGNORECASE)
     if not cleaned or _CONTROL_ONLY.search(cleaned):
         return None
+    if re.fullmatch(r"(?:bitte\s+)?youtube[\s!?.]*", cleaned, re.IGNORECASE):
+        return "Musik"
+    if re.match(r"^youtube\s+", cleaned, re.IGNORECASE):
+        cleaned = "spiele " + cleaned
     if not _PLAY_REQUEST.search(cleaned):
         return None
 
@@ -107,5 +112,5 @@ def extract_music_request(message: str) -> str | None:
     )
     query = " ".join(query.strip(" ?!.,-").split())
     if not query:
-        return None
+        return "Musik"
     return query[:120]
