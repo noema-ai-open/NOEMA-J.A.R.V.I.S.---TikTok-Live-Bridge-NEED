@@ -1,12 +1,66 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
+
+from app.llm import LLMProvider, ProviderError, ProviderTimeout
 from app.models import JarvisState, QueuedQuestion, TikTokEvent
 from app.music import extract_music_request, parse_music_command
 from app.service import LiveAIService as BaseLiveAIService
 
 
+_TRANSIENT_MARKERS = (
+    "ConnectError",
+    "ReadError",
+    "WriteError",
+    "RemoteProtocolError",
+    "PoolTimeout",
+)
+
+
+def _is_transient_provider_error(exc: ProviderError) -> bool:
+    return isinstance(exc, ProviderTimeout) or any(
+        marker in str(exc) for marker in _TRANSIENT_MARKERS
+    )
+
+
+class RetryingProvider(LLMProvider):
+    """Retry short-lived transport failures before provider failover.
+
+    Retries are only attempted before the provider has emitted any text, so a
+    broken stream can never duplicate already-visible answer chunks.
+    """
+
+    def __init__(self, provider: LLMProvider, *, attempts: int = 3) -> None:
+        self.provider = provider
+        self.attempts = max(1, attempts)
+
+    async def generate(self, question: str) -> AsyncIterator[str]:
+        for attempt in range(self.attempts):
+            emitted = False
+            try:
+                async for chunk in self.provider.generate(question):
+                    emitted = True
+                    yield chunk
+                return
+            except ProviderError as exc:
+                if emitted or not _is_transient_provider_error(exc) or attempt + 1 >= self.attempts:
+                    raise
+                await asyncio.sleep(0.25 * (attempt + 1))
+
+    async def health(self) -> bool:
+        try:
+            return await self.provider.health()
+        except ProviderError:
+            return False
+
+
 class LiveAIService(BaseLiveAIService):
     """Live service with non-blocking recovery and strict media isolation."""
+
+    def _provider(self, kind: str) -> LLMProvider:
+        provider = super()._provider(kind)
+        return RetryingProvider(provider, attempts=3 if kind == "cloud" else 2)
 
     async def handle_event(
         self, event: TikTokEvent, *, allow_simulated: bool = False
@@ -21,12 +75,6 @@ class LiveAIService(BaseLiveAIService):
 
         await super().handle_event(event, allow_simulated=allow_simulated)
 
-        # The base service currently queues natural-language play requests for
-        # the LLM after also publishing them to the media layer. During a live
-        # show that can make one viewer music request start/fail the AI path and
-        # leave the operator seeing a pause. Media commands are side effects,
-        # not AI questions, so remove only this event from the AI queue before
-        # the processor can consume the wake-up.
         if not is_viewer_media_command:
             return
 
@@ -48,8 +96,6 @@ class LiveAIService(BaseLiveAIService):
         if not (self.paused and self.state == JarvisState.ERROR):
             return
 
-        # Provider exhaustion in the base implementation requeues exactly the
-        # question that just failed. Runtime errors and manual pause do not.
         before = len(self.questions._items)
         self.questions._items[:] = [
             item for item in self.questions._items if item.event_id != question.event_id
