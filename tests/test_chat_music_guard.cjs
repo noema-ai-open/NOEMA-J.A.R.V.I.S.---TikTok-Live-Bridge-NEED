@@ -12,31 +12,61 @@ function harness() {
     showModal() { this.open = true; },
     close() { this.open = false; },
   };
-  let calls = 0;
-  const context = vm.createContext({
-    document: {getElementById: (id) => id === "media-dialog" ? dialog : null},
-    searchAndPlayYouTube: async () => {
-      calls += 1;
-      dialog.showModal();
-      return "ok";
+  const makeButton = () => ({
+    capture: [],
+    bubble: [],
+    addEventListener(type, fn, options) {
+      if (type !== "click") return;
+      (options === true ? this.capture : this.bubble).push(fn);
     },
+    click() {
+      for (const fn of this.capture) fn({type:"click"});
+      for (const fn of this.bubble) fn({type:"click"});
+    },
+  });
+  const media = makeButton();
+  const focus = makeButton();
+  // Existing app.js handlers are registered before the guard script.
+  media.addEventListener("click", () => dialog.showModal());
+  focus.addEventListener("click", () => {});
+
+  const timers = [];
+  const context = vm.createContext({
+    document: {
+      getElementById(id) {
+        if (id === "media-dialog") return dialog;
+        if (id === "media-btn") return media;
+        if (id === "focus-btn") return focus;
+        return null;
+      },
+    },
+    setTimeout(fn) { timers.push(fn); return timers.length; },
   });
   context.window = context;
   vm.runInContext(source, context, {filename: "chat-music-guard.js"});
-  return {context, dialog, calls: () => calls};
+  return {context, dialog, media, focus, flush(){ while (timers.length) timers.shift()(); }};
 }
 
-test("viewer-triggered music search is closed before stream capture can show it", async () => {
+test("viewer-triggered programmatic media opening stays hidden from stream capture", () => {
   const h = harness();
-  await h.context.searchAndPlayYouTube("Nightcall");
-  assert.equal(h.calls(), 1);
+  h.dialog.showModal();
   assert.equal(h.dialog.open, false);
 });
 
-test("operator-opened media dialog remains visible during manual search", async () => {
+test("operator media button can still open the dialog manually", () => {
   const h = harness();
-  h.dialog.showModal();
-  await h.context.searchAndPlayYouTube("Nightcall");
-  assert.equal(h.calls(), 1);
+  h.media.click();
   assert.equal(h.dialog.open, true);
+  h.flush();
+  h.dialog.close();
+  h.dialog.showModal();
+  assert.equal(h.dialog.open, false);
+});
+
+test("TikTok Show button closes an already-open operator dialog", () => {
+  const h = harness();
+  h.media.click();
+  assert.equal(h.dialog.open, true);
+  h.focus.click();
+  assert.equal(h.dialog.open, false);
 });

@@ -1,23 +1,41 @@
 (() => {
   if (window.__noemaChatMusicGuardInstalled) return;
-  const originalSearchAndPlay = window.searchAndPlayYouTube;
-  if (typeof originalSearchAndPlay !== "function") return;
+  const dialog = document.getElementById("media-dialog");
+  if (!dialog || typeof dialog.showModal !== "function") return;
 
   window.__noemaChatMusicGuardInstalled = true;
-  window.searchAndPlayYouTube = async function guardedSearchAndPlayYouTube(query) {
-    const dialog = document.getElementById("media-dialog");
-    const operatorOpenedDialog = Boolean(dialog?.open);
-    const pending = originalSearchAndPlay.call(this, query);
 
-    // A chat-triggered request starts while the media dialog is closed. The
-    // existing player code opens it synchronously; close it again before the
-    // browser can paint the next frame so it never appears in stream capture.
-    if (!operatorOpenedDialog && dialog?.open) dialog.close();
+  const nativeShowModal = dialog.showModal.bind(dialog);
+  let operatorPermit = 0;
 
-    try {
-      return await pending;
-    } finally {
-      if (!operatorOpenedDialog && dialog?.open) dialog.close();
-    }
+  function grantOperatorOpen() {
+    operatorPermit += 1;
+    window.setTimeout(() => {
+      operatorPermit = Math.max(0, operatorPermit - 1);
+    }, 0);
+  }
+
+  // app.js is loaded before this guard. A capture-phase listener still runs
+  // before the existing media-button click handler, so only a real/manual
+  // operator click receives permission to open the dialog.
+  document.getElementById("media-btn")?.addEventListener(
+    "click",
+    grantOperatorOpen,
+    true,
+  );
+
+  dialog.showModal = function guardedShowModal() {
+    if (operatorPermit <= 0) return undefined;
+    return nativeShowModal();
   };
+
+  // Entering/leaving TikTok Show must never leave an already-open operator
+  // dialog sitting above the captured dashboard.
+  document.getElementById("focus-btn")?.addEventListener(
+    "click",
+    () => {
+      if (dialog.open) dialog.close();
+    },
+    true,
+  );
 })();
