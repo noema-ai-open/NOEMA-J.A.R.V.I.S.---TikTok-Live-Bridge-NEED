@@ -1,0 +1,50 @@
+/* TikTok Show mode: keep the live text panel stable while streamed text grows. */
+body.focus-mode .dialog-card {
+  width: min(820px, 90vw);
+  height: clamp(190px, 22vh, 250px);
+  min-height: 190px;
+  margin-top: 18px;
+  padding: 18px 22px;
+  display: grid;
+  grid-template-rows: auto minmax(36px, auto) auto minmax(72px, 1fr);
+  align-content: start;
+  overflow: hidden;
+  background: rgba(4, 11, 15, .64);
+}
+
+body.focus-mode .dialog-card p {
+  margin-top: 7px;
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+body.focus-mode #current-question {
+  min-height: 36px;
+  max-height: 3.2em;
+  overflow-y: auto;
+}
+
+body.focus-mode #current-answer {
+  min-height: 72px;
+  max-height: 8.4em;
+  padding: 2px 8px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(87, 217, 232, .28) transparent;
+}
+
+body.focus-mode #current-question,
+body.focus-mode #current-answer {
+  scrollbar-width: thin;
+}
+
+@media (max-width: 680px) {
+  body.focus-mode .dialog-card {
+    width: 86vw;
+    height: clamp(180px, 24vh, 230px);
+    min-height: 180px;
+    transform: translateX(-3vw);
+    padding-inline: 16px;
+  }
+}
