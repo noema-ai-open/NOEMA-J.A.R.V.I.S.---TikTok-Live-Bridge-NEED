@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noema-live-ai-bridge"
-version = "0.5.9"
+version = "0.5.10"
 description = "Local AI/Jarvis companion for NOEMA TikTok Live Bridge"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-build = ["pyinstaller>=6.0,<7"]
+build = ["pyinstaller==6.22.0"]
 dev = [
   "pytest>=8,<10",
   "pytest-asyncio>=0.24,<2",
