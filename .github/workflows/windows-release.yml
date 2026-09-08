@@ -56,9 +56,10 @@ jobs:
             if (
               $dashboard.StatusCode -ne 200 -or
               $dashboard.Content -notmatch "chat-music-guard.js" -or
-              $dashboard.Content -notmatch "music-continuity-guard.js"
+              $dashboard.Content -notmatch "music-continuity-guard.js" -or
+              $dashboard.Content -notmatch "show-mode-layout.css"
             ) {
-              throw "Dashboard oder Musik-Guards fehlen."
+              throw "Dashboard, Musik-Guards oder Show-Mode-Layout fehlen."
             }
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -80,4 +81,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "windows-0.5.9-${{ github.run_number }}"
-          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.9 Windows Setup" --notes "JARVIS bringt gelegentlich natürliche Community-Hinweise zu Likes, Follows, Teilen oder freiwilligen Geschenken ein, ohne zu drängen. Vulgäre sexualisierte Provokationen und Beschimpfungen werden kurz und bestimmt moderiert, während sachliche medizinische oder biologische Fragen normal beantwortet werden. Neue Installationen behalten standardmäßig 16 statt 10 letzte Gesprächszüge pro Nutzer für besseren Kontext; bestehende Nutzer können den Wert unter Settings > Letzte Turns auf 16 oder 20 setzen. Spotify-Fallback, DeepSeek/Qwen und Musik-/TikTok-Isolation bleiben erhalten. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat."
+          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.9 Windows Setup" --notes "JARVIS bringt gelegentlich natürliche Community-Hinweise zu Likes, Follows, Teilen oder freiwilligen Geschenken ein, ohne zu drängen. Vulgäre sexualisierte Provokationen und Beschimpfungen werden kurz und bestimmt moderiert, während sachliche medizinische oder biologische Fragen normal beantwortet werden. Neue Installationen behalten standardmäßig bis zu 20 letzte Gesprächszüge pro Nutzer für besseren Kontext. Im TikTok-Show-Modus ist das Frage-/Antwortfeld jetzt größer und hat eine feste Höhe, damit es beim Streaming längerer Antworten nicht mehr springt; längerer Text scrollt innerhalb des Feldes. Spotify-Fallback, DeepSeek/Qwen und Musik-/TikTok-Isolation bleiben erhalten. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat."
