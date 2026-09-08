@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -210,3 +211,60 @@ async def test_media_request_is_never_woken_into_processor_even_when_service_is_
         assert service.state == JarvisState.IDLE
     finally:
         await service.stop()
+
+
+@pytest.mark.asyncio
+async def test_spotify_album_slash_command_is_not_blocked_by_natural_request_cooldown() -> None:
+    service = LiveAIService(
+        BridgeSettings(
+            connect_on_start=False,
+            interactive_music_enabled=True,
+            music_backend="spotify",
+            spotify_enabled=True,
+            spotify_client_id="client-id",
+            spotify_refresh_token="refresh-token",
+            music_request_cooldown=30,
+        )
+    )
+    service.tts = AckTTS()
+    service._last_music_request_at = time.monotonic()
+    scheduled: list[tuple[str, str | None]] = []
+    service._schedule_spotify = lambda action, query=None: scheduled.append((str(action), query))  # type: ignore[method-assign]
+
+    await service.add_mock_event(
+        "chat_message",
+        "Music Fan",
+        "/album Daft Punk Random Access Memories",
+        "music-user",
+    )
+    await asyncio.sleep(0)
+
+    assert scheduled == [("play_album", "Daft Punk Random Access Memories")]
+    assert len(service.questions) == 0
+
+
+@pytest.mark.asyncio
+async def test_operator_spotify_album_input_is_normalized_and_status_stays_configured(monkeypatch) -> None:
+    seen: list[tuple[str, str | None]] = []
+
+    async def fake_spotify_control(self, action, *, query=None):
+        seen.append((str(action), query))
+        return {"connected": True, "track": "Give Life Back to Music"}
+
+    monkeypatch.setattr(BaseLiveAIService, "spotify_control", fake_spotify_control)
+    service = LiveAIService(
+        BridgeSettings(
+            connect_on_start=False,
+            spotify_enabled=True,
+            spotify_client_id="client-id",
+            spotify_refresh_token="refresh-token",
+        )
+    )
+
+    playback = await service.spotify_control(
+        "play", query="/album Daft Punk – Random Access Memories"
+    )
+
+    assert seen == [("play_album", "Daft Punk – Random Access Memories")]
+    assert playback["connected"] is True
+    assert playback["configured"] is True
