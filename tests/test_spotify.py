@@ -114,6 +114,115 @@ def test_search_and_play_album_uses_spotify_context() -> None:
     assert status["track"] == "One More Time"
 
 
+def test_restriction_violation_retries_on_desktop_connect_device() -> None:
+    play_attempts: list[str | None] = []
+    transfers: list[str] = []
+    active_device = "web"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal active_device
+        if request.url.host == "accounts.spotify.com":
+            return httpx.Response(200, json={"access_token": "access", "expires_in": 3600})
+        if request.url.path == "/v1/search":
+            return httpx.Response(
+                200,
+                json={"albums": {"items": [{"uri": "spotify:album:ram"}]}},
+            )
+        if request.url.path == "/v1/me/player/play":
+            device_id = request.url.params.get("device_id")
+            play_attempts.append(device_id)
+            if device_id == "web":
+                return httpx.Response(
+                    403,
+                    json={"error": {"status": 403, "message": "Restriction violated"}},
+                )
+            assert device_id == "desktop"
+            assert json.loads(request.content) == {"context_uri": "spotify:album:ram"}
+            return httpx.Response(204)
+        if request.url.path == "/v1/me/player/devices":
+            return httpx.Response(
+                200,
+                json={
+                    "devices": [
+                        {"id": "web", "name": "Chrome", "type": "Computer", "is_active": active_device == "web", "is_restricted": False},
+                        {"id": "phone", "name": "Phone", "type": "Smartphone", "is_active": False, "is_restricted": False},
+                        {"id": "desktop", "name": "Spotify Desktop", "type": "Computer", "is_active": active_device == "desktop", "is_restricted": False},
+                    ]
+                },
+            )
+        if request.url.path == "/v1/me/player" and request.method == "PUT":
+            body = json.loads(request.content)
+            transfers.append(body["device_ids"][0])
+            active_device = body["device_ids"][0]
+            return httpx.Response(204)
+        if request.url.path == "/v1/me/player":
+            name = "Spotify Desktop" if active_device == "desktop" else "Chrome"
+            return httpx.Response(
+                200,
+                json={
+                    "is_playing": active_device == "desktop",
+                    "device": {
+                        "id": active_device,
+                        "name": name,
+                        "type": "Computer",
+                        "volume_percent": 40,
+                        "is_restricted": False,
+                    },
+                    "item": {
+                        "name": "Give Life Back to Music",
+                        "artists": [{"name": "Daft Punk"}],
+                    },
+                },
+            )
+        raise AssertionError(request.url)
+
+    client = SpotifyConnectClient(
+        "client-id", "refresh", transport=httpx.MockTransport(handler)
+    )
+    status = asyncio.run(
+        client.control("play_album", query="Daft Punk Random Access Memories")
+    )
+
+    assert play_attempts == ["web", "desktop"]
+    assert transfers == ["desktop"]
+    assert status["device"] == "Spotify Desktop"
+    assert status["track"] == "Give Life Back to Music"
+
+
+def test_restriction_violation_without_alternative_gives_actionable_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "accounts.spotify.com":
+            return httpx.Response(200, json={"access_token": "access", "expires_in": 3600})
+        if request.url.path == "/v1/search":
+            return httpx.Response(200, json={"tracks": {"items": [{"uri": "spotify:track:one"}]}})
+        if request.url.path == "/v1/me/player/play":
+            return httpx.Response(
+                403,
+                json={"error": {"status": 403, "message": "Restriction violated"}},
+            )
+        if request.url.path == "/v1/me/player/devices":
+            return httpx.Response(
+                200,
+                json={"devices": [{"id": "web", "name": "Chrome", "type": "Computer", "is_active": True, "is_restricted": False}]},
+            )
+        if request.url.path == "/v1/me/player":
+            return httpx.Response(
+                200,
+                json={
+                    "is_playing": False,
+                    "device": {"id": "web", "name": "Chrome", "volume_percent": 40, "is_restricted": False},
+                    "item": None,
+                },
+            )
+        raise AssertionError(request.url)
+
+    client = SpotifyConnectClient(
+        "client-id", "refresh", transport=httpx.MockTransport(handler)
+    )
+    with pytest.raises(SpotifyError, match="Spotify Desktop öffnen"):
+        asyncio.run(client.control("play", query="Synthwave"))
+
+
 def test_spotify_network_failure_is_bounded() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("offline", request=request)

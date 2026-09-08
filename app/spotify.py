@@ -97,8 +97,7 @@ class SpotifyConnectClient:
 
     async def status(self) -> dict[str, object]:
         playback = await self._request("GET", "/v1/me/player", allow_empty=True)
-        devices_payload = await self._request("GET", "/v1/me/player/devices")
-        devices = devices_payload.get("devices", []) if isinstance(devices_payload, dict) else []
+        devices = await self._devices()
         item = playback.get("item") if isinstance(playback, dict) else None
         artists = item.get("artists", []) if isinstance(item, dict) else []
         device = playback.get("device") if isinstance(playback, dict) else None
@@ -120,7 +119,6 @@ class SpotifyConnectClient:
                     "restricted": bool(entry.get("is_restricted")),
                 }
                 for entry in devices
-                if isinstance(entry, dict)
             ],
         }
 
@@ -128,7 +126,6 @@ class SpotifyConnectClient:
         self, action: SpotifyControl, *, query: str | None = None
     ) -> dict[str, object]:
         device_id = await self._ensure_device()
-        params = {"device_id": device_id} if device_id else None
         if action in {"play", "play_album"} and query:
             search_type = "album" if action == "play_album" else "track"
             search = await self._request(
@@ -147,46 +144,139 @@ class SpotifyConnectClient:
                 if action == "play_album"
                 else {"uris": [item["uri"]]}
             )
-            await self._request(
-                "PUT", "/v1/me/player/play", params=params, json=playback
+            await self._player_request(
+                "PUT", "/v1/me/player/play", device_id=device_id, json=playback
             )
         elif action in {"play", "resume"}:
-            await self._request("PUT", "/v1/me/player/play", params=params)
+            await self._player_request(
+                "PUT", "/v1/me/player/play", device_id=device_id
+            )
         elif action == "pause":
-            await self._request("PUT", "/v1/me/player/pause", params=params)
+            await self._player_request(
+                "PUT", "/v1/me/player/pause", device_id=device_id
+            )
         elif action == "skip":
-            await self._request("POST", "/v1/me/player/next", params=params)
+            await self._player_request(
+                "POST", "/v1/me/player/next", device_id=device_id
+            )
         elif action in {"volume_up", "volume_down"}:
             playback = await self._request("GET", "/v1/me/player", allow_empty=True)
             device = playback.get("device") if isinstance(playback, dict) else None
             current = device.get("volume_percent") if isinstance(device, dict) else 50
             current = current if isinstance(current, int) else 50
             target = max(0, min(100, current + (10 if action == "volume_up" else -10)))
-            await self._request(
+            await self._player_request(
                 "PUT",
                 "/v1/me/player/volume",
-                params={"device_id": device_id, "volume_percent": target},
+                device_id=device_id,
+                params={"volume_percent": target},
             )
         return await self.status()
+
+    async def _player_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        device_id: str | None,
+        params: dict[str, object] | None = None,
+        json: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        request_params = dict(params or {})
+        if device_id:
+            request_params["device_id"] = device_id
+        try:
+            return await self._request(
+                method,
+                path,
+                params=request_params or None,
+                json=json,
+            )
+        except SpotifyError as exc:
+            if not self._is_restriction_error(exc):
+                raise
+            return await self._retry_player_request_on_other_device(
+                method,
+                path,
+                failed_device_id=device_id,
+                params=params,
+                json=json,
+                original_error=exc,
+            )
+
+    async def _retry_player_request_on_other_device(
+        self,
+        method: str,
+        path: str,
+        *,
+        failed_device_id: str | None,
+        params: dict[str, object] | None,
+        json: dict[str, object] | None,
+        original_error: SpotifyError,
+    ) -> dict[str, object]:
+        candidates = [
+            entry
+            for entry in await self._devices()
+            if entry.get("id")
+            and not entry.get("is_restricted")
+            and str(entry.get("id")) != failed_device_id
+        ]
+        candidates.sort(key=self._device_priority)
+        for device in candidates:
+            candidate_id = str(device["id"])
+            try:
+                await self._request(
+                    "PUT",
+                    "/v1/me/player",
+                    json={"device_ids": [candidate_id], "play": False},
+                )
+                request_params = dict(params or {})
+                request_params["device_id"] = candidate_id
+                return await self._request(
+                    method,
+                    path,
+                    params=request_params,
+                    json=json,
+                )
+            except SpotifyError as exc:
+                if self._is_restriction_error(exc):
+                    continue
+                raise
+        raise SpotifyError(
+            "Spotify blockiert den Player-Befehl auf dem aktiven Gerät. "
+            "Bitte Spotify Desktop öffnen, einen Titel kurz manuell starten und erneut versuchen."
+        ) from original_error
+
+    async def _devices(self) -> list[dict[str, object]]:
+        payload = await self._request("GET", "/v1/me/player/devices")
+        devices = payload.get("devices", []) if isinstance(payload, dict) else []
+        return [entry for entry in devices if isinstance(entry, dict)]
+
+    @staticmethod
+    def _device_priority(device: dict[str, object]) -> tuple[int, int, str]:
+        device_type = str(device.get("type") or "").lower()
+        is_computer = device_type == "computer"
+        is_active = bool(device.get("is_active"))
+        return (0 if is_computer else 1, 0 if is_active else 1, str(device.get("name") or ""))
+
+    @staticmethod
+    def _is_restriction_error(exc: SpotifyError) -> bool:
+        return "restriction violated" in str(exc).lower()
 
     async def _ensure_device(self) -> str | None:
         playback = await self._request("GET", "/v1/me/player", allow_empty=True)
         active = playback.get("device") if isinstance(playback, dict) else None
         if isinstance(active, dict) and active.get("id") and not active.get("is_restricted"):
             return str(active["id"])
-        devices_payload = await self._request("GET", "/v1/me/player/devices")
-        devices = devices_payload.get("devices", []) if isinstance(devices_payload, dict) else []
-        device = next(
-            (
-                entry
-                for entry in devices
-                if isinstance(entry, dict) and entry.get("id") and not entry.get("is_restricted")
-            ),
-            None,
-        )
-        if device is None:
+        devices = [
+            entry
+            for entry in await self._devices()
+            if entry.get("id") and not entry.get("is_restricted")
+        ]
+        devices.sort(key=self._device_priority)
+        if not devices:
             raise SpotifyError("Kein steuerbares Spotify-Connect-Gerät aktiv")
-        device_id = str(device["id"])
+        device_id = str(devices[0]["id"])
         await self._request(
             "PUT", "/v1/me/player", json={"device_ids": [device_id], "play": False}
         )
