@@ -33,7 +33,7 @@ class BridgeSettings(BaseModel):
     openrouter_http_referer: str = ""
     openrouter_title: str = "NOEMA J.A.R.V.I.S."
     memory_enabled: bool = True
-    memory_recent_turns: int = Field(default=10, ge=1, le=20)
+    memory_recent_turns: int = Field(default=16, ge=1, le=20)
     memory_max_users_ram: int = Field(default=200, ge=1, le=5000)
     memory_max_turns_per_user_disk: int = Field(default=100, ge=1, le=1000)
     memory_retention_days: int = Field(default=30, ge=0, le=3650)
