@@ -14,6 +14,7 @@ from app.llm import (
 from app.models import JarvisState, QueuedQuestion, TikTokEvent
 from app.music import MusicCommand, extract_music_request, parse_music_command
 from app.service import LiveAIService as BaseLiveAIService
+from app.spotify import SpotifyControl
 
 
 _TRANSIENT_MARKERS = (
@@ -25,6 +26,7 @@ _TRANSIENT_MARKERS = (
 )
 
 _CLOUD_BACKUP_MODEL = "qwen/qwen3.7-flash"
+_EXPLICIT_CHAT_COMMAND_COOLDOWN = 1.0
 
 
 def _is_transient_provider_error(exc: ProviderError) -> bool:
@@ -136,6 +138,30 @@ class LiveAIService(BaseLiveAIService):
             return provider
         return FailoverProvider((provider, backup))
 
+    async def spotify_control(
+        self, action: SpotifyControl, *, query: str | None = None
+    ) -> dict[str, object]:
+        """Normalize operator slash input and keep Spotify UI status coherent."""
+        normalized_action: SpotifyControl = action
+        normalized_query = query
+        if action == "play" and query:
+            command = parse_music_command(query)
+            if command is not None and command.query:
+                if command.action == "album":
+                    normalized_action = "play_album"
+                    normalized_query = command.query
+                elif command.action == "request":
+                    normalized_query = command.query
+
+        playback = await super().spotify_control(
+            normalized_action, query=normalized_query
+        )
+        return {
+            "enabled": self.settings.spotify_enabled,
+            "configured": bool(self.settings.spotify_client_id),
+            **playback,
+        }
+
     async def handle_event(
         self, event: TikTokEvent, *, allow_simulated: bool = False
     ) -> None:
@@ -171,6 +197,11 @@ class LiveAIService(BaseLiveAIService):
             else extracted_request
         )
         album_request = music_command is not None and music_command.action == "album"
+        explicit_request = (
+            music_command is not None
+            and music_command.action in {"request", "album"}
+            and bool(music_command.query)
+        )
         ready = (
             self.settings.spotify_enabled
             and bool(self.settings.spotify_client_id)
@@ -184,14 +215,30 @@ class LiveAIService(BaseLiveAIService):
         request_accepted = False
         control_accepted = False
 
+        if explicit_request:
+            last_request = getattr(
+                self, "_last_explicit_music_request_at", float("-inf")
+            )
+            cooldown_elapsed = (
+                now - last_request >= _EXPLICIT_CHAT_COMMAND_COOLDOWN
+            )
+        else:
+            cooldown_elapsed = (
+                now - self._last_music_request_at
+                >= self.settings.music_request_cooldown
+            )
+
         if (
             query
             and ready
-            and now - self._last_music_request_at >= self.settings.music_request_cooldown
+            and cooldown_elapsed
             and (spotify_target or not album_request)
         ):
             request_accepted = True
-            self._last_music_request_at = now
+            if explicit_request:
+                self._last_explicit_music_request_at = now
+            else:
+                self._last_music_request_at = now
             event.metadata["music_request"] = query
 
         if (
