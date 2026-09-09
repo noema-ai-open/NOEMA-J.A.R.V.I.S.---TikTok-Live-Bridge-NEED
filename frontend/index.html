@@ -137,7 +137,9 @@
         <label class="wide">Brave API Key<input name="brave_api_key" type="password" autocomplete="new-password" placeholder="Unverändert lassen"></label>
         <label>Such-Timeout (s)<input name="search_timeout" type="number" min="0.1" max="30" step="0.1"></label>
         <label>Treffer pro Suche<input name="search_result_limit" type="number" min="1" max="10"></label>
-        <label>Musikwunsch-Cooldown (s)<input name="music_request_cooldown" type="number" min="5" max="300" step="1"></label>
+        <label>Musikrotation<select name="music_rotation_enabled"><option value="true">AN · Warteschlange automatisch wechseln</option><option value="false">AUS · Musikwünsche sofort</option></select></label>
+        <label>Musikrotation Intervall (s)<input name="music_request_cooldown" type="number" min="5" max="300" step="1"></label>
+        <p class="settings-hint wide">Standard: 120 Sekunden. Bei aktiver Rotation startet der nächste vorgemerkte Wunsch automatisch. Eine Rose des wartenden Users löst seinen Wunsch sofort aus.</p>
         <div class="section-line wide">SPOTIFY CONNECT · PRIVATE STEUERUNG</div>
         <label class="toggle"><input name="spotify_enabled" type="checkbox"><span></span>Spotify Connect aktiv</label>
         <label>Musikziel<select name="music_backend"><option value="youtube">YouTube Player</option><option value="spotify">Spotify Connect</option></select></label>
