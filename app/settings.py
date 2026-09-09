@@ -44,7 +44,8 @@ class BridgeSettings(BaseModel):
     youtube_enabled: bool = False
     interactive_music_enabled: bool = False
     music_backend: Literal["youtube", "spotify"] = "youtube"
-    music_request_cooldown: float = Field(default=300.0, ge=5, le=300)
+    music_rotation_enabled: bool = True
+    music_request_cooldown: float = Field(default=120.0, ge=5, le=300)
     spotify_enabled: bool = False
     spotify_client_id: str = Field(default="", max_length=200)
     spotify_refresh_token: SecretStr | None = None
@@ -132,6 +133,7 @@ class BridgeSettings(BaseModel):
             "youtube_enabled": self.youtube_enabled,
             "interactive_music_enabled": self.interactive_music_enabled,
             "music_backend": self.music_backend,
+            "music_rotation_enabled": self.music_rotation_enabled,
             "music_request_cooldown": self.music_request_cooldown,
             "spotify_enabled": self.spotify_enabled,
             "spotify_client_id": self.spotify_client_id,
@@ -173,6 +175,7 @@ class SettingsUpdate(BaseModel):
     youtube_enabled: bool | None = None
     interactive_music_enabled: bool | None = None
     music_backend: Literal["youtube", "spotify"] | None = None
+    music_rotation_enabled: bool | None = None
     music_request_cooldown: float | None = Field(default=None, ge=5, le=300)
     spotify_enabled: bool | None = None
     spotify_client_id: str | None = Field(default=None, max_length=200)
