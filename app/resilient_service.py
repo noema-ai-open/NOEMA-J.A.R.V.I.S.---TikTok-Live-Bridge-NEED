@@ -11,7 +11,7 @@ from app.llm import (
     ProviderRequest,
     ProviderTimeout,
 )
-from app.models import JarvisState, QueuedQuestion, TikTokEvent
+from app.models import GiftInfo, JarvisState, QueuedQuestion, TikTokEvent
 from app.music import MusicCommand, extract_music_request, parse_music_command
 from app.service import LiveAIService as BaseLiveAIService
 from app.spotify import SpotifyControl
@@ -26,7 +26,9 @@ _TRANSIENT_MARKERS = (
 )
 
 _CLOUD_BACKUP_MODEL = "qwen/qwen3.7-flash"
-_EXPLICIT_CHAT_COMMAND_COOLDOWN = 1.0
+_ENGAGEMENT_INTERVAL_SECONDS = 150.0
+_GIFT_PRIORITY_SECONDS = 45.0
+_WAIT_ACK_COOLDOWN_SECONDS = 30.0
 
 
 def _is_transient_provider_error(exc: ProviderError) -> bool:
@@ -100,6 +102,12 @@ class FailoverProvider(LLMProvider):
 class LiveAIService(BaseLiveAIService):
     """Live service with retry, cloud model failover and strict media isolation."""
 
+    async def start(self) -> None:
+        await super().start()
+        self._tasks.append(
+            asyncio.create_task(self._engagement_loop(), name="live-engagement")
+        )
+
     def _cloud_backup_provider(self) -> LLMProvider | None:
         primary_model = self.settings.cloud_model.strip()
         if not primary_model or primary_model == _CLOUD_BACKUP_MODEL:
@@ -168,6 +176,12 @@ class LiveAIService(BaseLiveAIService):
         if event.metadata.get("simulated") is True and not allow_simulated:
             return
 
+        if event.event_type == "gift":
+            await super().handle_event(event, allow_simulated=allow_simulated)
+            if self.settings.interactive_music_enabled:
+                await self._handle_gift_music_priority(event)
+            return
+
         if event.event_type != "chat_message" or not self.settings.interactive_music_enabled:
             await super().handle_event(event, allow_simulated=allow_simulated)
             return
@@ -184,6 +198,55 @@ class LiveAIService(BaseLiveAIService):
         # consume a natural-language music request before a later queue cleanup.
         await self._handle_media_event(event, music_command, extracted_request)
 
+    def _pending_music(self) -> dict[str, tuple[str, bool, str, str]]:
+        pending = getattr(self, "_pending_music_by_user", None)
+        if pending is None:
+            pending = {}
+            self._pending_music_by_user = pending
+        return pending
+
+    def _gift_priority(self) -> dict[str, float]:
+        priorities = getattr(self, "_gift_music_priority_until", None)
+        if priorities is None:
+            priorities = {}
+            self._gift_music_priority_until = priorities
+        return priorities
+
+    def _music_ready(self, spotify_target: bool) -> bool:
+        if spotify_target:
+            return (
+                self.settings.spotify_enabled
+                and bool(self.settings.spotify_client_id)
+                and self.settings.spotify_refresh_token is not None
+            )
+        return (
+            self.settings.internet_enabled
+            and self.settings.youtube_enabled
+            and self.settings.brave_api_key is not None
+        )
+
+    def _dispatch_music_request(
+        self,
+        *,
+        query: str,
+        album_request: bool,
+        display_name: str,
+        event_id: str,
+    ) -> None:
+        if self.settings.music_backend == "spotify":
+            self._schedule_spotify("play_album" if album_request else "play", query=query)
+            return
+        self.bus.publish(
+            {
+                "type": "music_request",
+                "request": {
+                    "query": query,
+                    "display_name": display_name,
+                    "event_id": event_id,
+                },
+            }
+        )
+
     async def _handle_media_event(
         self,
         event: TikTokEvent,
@@ -197,49 +260,33 @@ class LiveAIService(BaseLiveAIService):
             else extracted_request
         )
         album_request = music_command is not None and music_command.action == "album"
-        explicit_request = (
-            music_command is not None
-            and music_command.action in {"request", "album"}
-            and bool(music_command.query)
-        )
-        ready = (
-            self.settings.spotify_enabled
-            and bool(self.settings.spotify_client_id)
-            and self.settings.spotify_refresh_token is not None
-            if spotify_target
-            else self.settings.internet_enabled
-            and self.settings.youtube_enabled
-            and self.settings.brave_api_key is not None
-        )
+        ready = self._music_ready(spotify_target)
         now = time.monotonic()
         request_accepted = False
+        request_queued = False
         control_accepted = False
+        user_id = event.user.user_id
+        gift_priority = self._gift_priority().get(user_id, 0.0) >= now
+        cooldown_elapsed = (
+            now - self._last_music_request_at >= self.settings.music_request_cooldown
+        )
 
-        if explicit_request:
-            last_request = getattr(
-                self, "_last_explicit_music_request_at", float("-inf")
-            )
-            cooldown_elapsed = (
-                now - last_request >= _EXPLICIT_CHAT_COMMAND_COOLDOWN
-            )
-        else:
-            cooldown_elapsed = (
-                now - self._last_music_request_at
-                >= self.settings.music_request_cooldown
-            )
-
-        if (
-            query
-            and ready
-            and cooldown_elapsed
-            and (spotify_target or not album_request)
-        ):
+        if query and ready and (cooldown_elapsed or gift_priority) and (spotify_target or not album_request):
             request_accepted = True
-            if explicit_request:
-                self._last_explicit_music_request_at = now
-            else:
-                self._last_music_request_at = now
+            self._last_music_request_at = now
+            self._pending_music().pop(user_id, None)
+            if gift_priority:
+                self._gift_priority().pop(user_id, None)
             event.metadata["music_request"] = query
+        elif query and ready and (spotify_target or not album_request):
+            request_queued = True
+            self._pending_music()[user_id] = (
+                query,
+                album_request,
+                event.user.display_name,
+                event.event_id,
+            )
+            event.metadata["music_request_pending"] = query
 
         if (
             music_command is not None
@@ -258,20 +305,15 @@ class LiveAIService(BaseLiveAIService):
         self.bus.publish({"type": "event", "event": record})
 
         if request_accepted and query:
-            if spotify_target:
-                self._schedule_spotify("play_album" if album_request else "play", query=query)
-            else:
-                self.bus.publish(
-                    {
-                        "type": "music_request",
-                        "request": {
-                            "query": query,
-                            "display_name": event.user.display_name,
-                            "event_id": event.event_id,
-                        },
-                    }
-                )
+            self._dispatch_music_request(
+                query=query,
+                album_request=album_request,
+                display_name=event.user.display_name,
+                event_id=event.event_id,
+            )
             self._schedule_music_ack(available=True)
+        elif request_queued:
+            self._schedule_waiting_music_ack()
         elif query and not ready:
             self._schedule_music_ack(available=False)
 
@@ -295,10 +337,69 @@ class LiveAIService(BaseLiveAIService):
             self.state = JarvisState.IDLE
         self._publish_status()
 
+    async def _handle_gift_music_priority(self, event: TikTokEvent) -> None:
+        handled = getattr(self, "_handled_music_gift_events", None)
+        if handled is None:
+            handled = set()
+            self._handled_music_gift_events = handled
+        if event.event_id in handled:
+            return
+        handled.add(event.event_id)
+        if len(handled) > 500:
+            handled.clear()
+            handled.add(event.event_id)
+
+        now = time.monotonic()
+        user_id = event.user.user_id
+        self._gift_priority()[user_id] = now + _GIFT_PRIORITY_SECONDS
+        pending = self._pending_music().pop(user_id, None)
+        gift = GiftInfo.from_event(event)
+        gift_name = gift.name or "Geschenk"
+
+        if pending is not None and self._music_ready(self.settings.music_backend == "spotify"):
+            query, album_request, display_name, event_id = pending
+            self._gift_priority().pop(user_id, None)
+            self._last_music_request_at = now
+            self._dispatch_music_request(
+                query=query,
+                album_request=album_request,
+                display_name=display_name,
+                event_id=event_id,
+            )
+            self._schedule_gift_music_ack(
+                f"Danke {event.user.display_name} für {gift_name}. Dein Musikwunsch kommt sofort."
+            )
+            return
+
+        self._schedule_gift_music_ack(
+            f"Danke {event.user.display_name} für {gift_name}. Dein nächster Musikwunsch kann jetzt sofort wechseln."
+        )
+
     def _schedule_music_ack(self, *, available: bool) -> None:
         task = asyncio.create_task(
             self._speak_music_ack(available=available), name="music-ack"
         )
+        self._media_tasks.add(task)
+        task.add_done_callback(self._media_tasks.discard)
+
+    def _schedule_waiting_music_ack(self) -> None:
+        now = time.monotonic()
+        last = getattr(self, "_last_waiting_music_ack_at", float("-inf"))
+        if now - last < _WAIT_ACK_COOLDOWN_SECONDS:
+            return
+        self._last_waiting_music_ack_at = now
+        interval = self._music_interval_text()
+        task = asyncio.create_task(
+            self._speak_text(
+                f"Musikwunsch vorgemerkt. Der normale Wechsel läuft frühestens alle {interval}. Wenn du sofort dran sein willst, reicht eine Rose."
+            ),
+            name="music-wait-ack",
+        )
+        self._media_tasks.add(task)
+        task.add_done_callback(self._media_tasks.discard)
+
+    def _schedule_gift_music_ack(self, text: str) -> None:
+        task = asyncio.create_task(self._speak_text(text), name="gift-music-ack")
         self._media_tasks.add(task)
         task.add_done_callback(self._media_tasks.discard)
 
@@ -308,12 +409,57 @@ class LiveAIService(BaseLiveAIService):
             if available
             else "Die Musikfunktion ist gerade noch nicht bereit."
         )
+        await self._speak_text(text)
+
+    async def _speak_text(self, text: str) -> None:
         try:
             await self.tts.speak(text)
         except RuntimeError:
-            # Music playback itself must remain independent from an optional
-            # acknowledgement failure in the TTS bridge.
+            # Media playback and live processing must remain independent from
+            # an optional acknowledgement failure in the TTS bridge.
             return
+
+    def _music_interval_text(self) -> str:
+        seconds = int(round(self.settings.music_request_cooldown))
+        if seconds >= 60 and seconds % 60 == 0:
+            minutes = seconds // 60
+            return "einer Minute" if minutes == 1 else f"{minutes} Minuten"
+        return f"{seconds} Sekunden"
+
+    async def _engagement_loop(self) -> None:
+        await asyncio.sleep(_ENGAGEMENT_INTERVAL_SECONDS)
+        while True:
+            try:
+                if (
+                    self.bridge_connected
+                    and not self.paused
+                    and self.state == JarvisState.IDLE
+                    and self.current_question is None
+                    and not self.tts_speaking
+                    and not await self.tts.state()
+                ):
+                    index = getattr(self, "_engagement_index", 0)
+                    interval = self._music_interval_text()
+                    messages = (
+                        "Wenn euch der Stream gefällt, lasst gern ein Like da.",
+                        "Teilt den Live gern mit jemandem, der J.A.R.V.I.S. auch ausprobieren will.",
+                        "Wenn ihr neu dabei seid, folgt gern, dann findet ihr den nächsten Live schneller wieder.",
+                        f"Musikwünsche gehen mit Slash Musik und Songtitel. Normal wechseln wir frühestens alle {interval}. Wenn es sofort sein soll, reicht eine Rose.",
+                    )
+                    text = messages[index % len(messages)]
+                    self._engagement_index = index + 1
+                    await self.tts.speak(text)
+                    self.last_answer = text
+                    self.current_answer = text
+                    self.tts_speaking = True
+                    self._speaking_until = time.monotonic() + 1.0
+                    self.state = JarvisState.SPEAKING
+                    self._publish_status()
+            except asyncio.CancelledError:
+                raise
+            except RuntimeError:
+                pass
+            await asyncio.sleep(_ENGAGEMENT_INTERVAL_SECONDS)
 
     async def _answer(self, question: QueuedQuestion) -> None:
         await super()._answer(question)
