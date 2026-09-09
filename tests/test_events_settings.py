@@ -50,7 +50,8 @@ def test_settings_validation_and_secret_redaction() -> None:
     assert public["youtube_enabled"] is False
     assert public["interactive_music_enabled"] is False
     assert public["music_backend"] == "youtube"
-    assert public["music_request_cooldown"] == 300.0
+    assert public["music_rotation_enabled"] is True
+    assert public["music_request_cooldown"] == 120.0
 
     with pytest.raises(ValidationError):
         BridgeSettings(tiktok_bridge_url="not-a-url")

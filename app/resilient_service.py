@@ -14,6 +14,7 @@ from app.llm import (
 from app.models import GiftInfo, JarvisState, QueuedQuestion, TikTokEvent
 from app.music import MusicCommand, extract_music_request, parse_music_command
 from app.service import LiveAIService as BaseLiveAIService
+from app.settings import SettingsUpdate
 from app.spotify import SpotifyControl
 
 
@@ -29,6 +30,7 @@ _CLOUD_BACKUP_MODEL = "qwen/qwen3.7-flash"
 _ENGAGEMENT_INTERVAL_SECONDS = 150.0
 _GIFT_PRIORITY_SECONDS = 45.0
 _WAIT_ACK_COOLDOWN_SECONDS = 30.0
+_ROTATION_POLL_SECONDS = 0.5
 
 
 def _is_transient_provider_error(exc: ProviderError) -> bool:
@@ -104,8 +106,11 @@ class LiveAIService(BaseLiveAIService):
 
     async def start(self) -> None:
         await super().start()
-        self._tasks.append(
-            asyncio.create_task(self._engagement_loop(), name="live-engagement")
+        self._tasks.extend(
+            (
+                asyncio.create_task(self._music_rotation_loop(), name="music-rotation"),
+                asyncio.create_task(self._engagement_loop(), name="live-engagement"),
+            )
         )
 
     def _cloud_backup_provider(self) -> LLMProvider | None:
@@ -170,6 +175,16 @@ class LiveAIService(BaseLiveAIService):
             **playback,
         }
 
+    async def update_settings(self, update: SettingsUpdate) -> dict[str, object]:
+        rotation_was_enabled = self.settings.music_rotation_enabled
+        payload = await super().update_settings(update)
+        if rotation_was_enabled and not self.settings.music_rotation_enabled:
+            # Turning rotation off means "no throttling" for future requests.
+            # Drop stale waiting entries instead of blasting several old songs
+            # through the player at once.
+            self._pending_music().clear()
+        return payload
+
     async def handle_event(
         self, event: TikTokEvent, *, allow_simulated: bool = False
     ) -> None:
@@ -178,7 +193,7 @@ class LiveAIService(BaseLiveAIService):
 
         if event.event_type == "gift":
             await super().handle_event(event, allow_simulated=allow_simulated)
-            if self.settings.interactive_music_enabled:
+            if self.settings.interactive_music_enabled and self.settings.music_rotation_enabled:
                 await self._handle_gift_music_priority(event)
             return
 
@@ -266,9 +281,11 @@ class LiveAIService(BaseLiveAIService):
         request_queued = False
         control_accepted = False
         user_id = event.user.user_id
-        gift_priority = self._gift_priority().get(user_id, 0.0) >= now
+        rotation_enabled = self.settings.music_rotation_enabled
+        gift_priority = rotation_enabled and self._gift_priority().get(user_id, 0.0) >= now
         cooldown_elapsed = (
-            now - self._last_music_request_at >= self.settings.music_request_cooldown
+            not rotation_enabled
+            or now - self._last_music_request_at >= self.settings.music_request_cooldown
         )
 
         if query and ready and (cooldown_elapsed or gift_priority) and (spotify_target or not album_request):
@@ -278,9 +295,13 @@ class LiveAIService(BaseLiveAIService):
             if gift_priority:
                 self._gift_priority().pop(user_id, None)
             event.metadata["music_request"] = query
-        elif query and ready and (spotify_target or not album_request):
+        elif query and ready and rotation_enabled and (spotify_target or not album_request):
             request_queued = True
-            self._pending_music()[user_id] = (
+            pending = self._pending_music()
+            # One current request per viewer. A newer request replaces the old
+            # one and moves that viewer to the back of the FIFO rotation.
+            pending.pop(user_id, None)
+            pending[user_id] = (
                 query,
                 album_request,
                 event.user.display_name,
@@ -336,6 +357,33 @@ class LiveAIService(BaseLiveAIService):
         if self.current_question is None and self.state == JarvisState.LISTENING:
             self.state = JarvisState.IDLE
         self._publish_status()
+
+    async def _music_rotation_loop(self) -> None:
+        while True:
+            try:
+                if (
+                    self.settings.music_rotation_enabled
+                    and self.settings.interactive_music_enabled
+                    and self._pending_music()
+                    and self._music_ready(self.settings.music_backend == "spotify")
+                ):
+                    now = time.monotonic()
+                    if now - self._last_music_request_at >= self.settings.music_request_cooldown:
+                        pending = self._pending_music()
+                        user_id = next(iter(pending))
+                        query, album_request, display_name, event_id = pending.pop(user_id)
+                        self._last_music_request_at = now
+                        self._dispatch_music_request(
+                            query=query,
+                            album_request=album_request,
+                            display_name=display_name,
+                            event_id=event_id,
+                        )
+            except asyncio.CancelledError:
+                raise
+            except RuntimeError:
+                pass
+            await asyncio.sleep(_ROTATION_POLL_SECONDS)
 
     async def _handle_gift_music_priority(self, event: TikTokEvent) -> None:
         handled = getattr(self, "_handled_music_gift_events", None)
@@ -439,12 +487,18 @@ class LiveAIService(BaseLiveAIService):
                     and not await self.tts.state()
                 ):
                     index = getattr(self, "_engagement_index", 0)
-                    interval = self._music_interval_text()
+                    if self.settings.music_rotation_enabled:
+                        interval = self._music_interval_text()
+                        music_message = (
+                            f"Musikwünsche gehen mit Slash Musik und Songtitel. Normal wechseln wir frühestens alle {interval}. Wenn es sofort sein soll, reicht eine Rose."
+                        )
+                    else:
+                        music_message = "Musikwünsche gehen mit Slash Musik und Songtitel. Die Musikrotation ist gerade ausgeschaltet."
                     messages = (
                         "Wenn euch der Stream gefällt, lasst gern ein Like da.",
                         "Teilt den Live gern mit jemandem, der J.A.R.V.I.S. auch ausprobieren will.",
                         "Wenn ihr neu dabei seid, folgt gern, dann findet ihr den nächsten Live schneller wieder.",
-                        f"Musikwünsche gehen mit Slash Musik und Songtitel. Normal wechseln wir frühestens alle {interval}. Wenn es sofort sein soll, reicht eine Rose.",
+                        music_message,
                     )
                     text = messages[index % len(messages)]
                     self._engagement_index = index + 1
