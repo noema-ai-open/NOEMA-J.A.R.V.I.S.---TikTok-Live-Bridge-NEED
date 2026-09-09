@@ -44,7 +44,7 @@ class BridgeSettings(BaseModel):
     youtube_enabled: bool = False
     interactive_music_enabled: bool = False
     music_backend: Literal["youtube", "spotify"] = "youtube"
-    music_request_cooldown: float = Field(default=30.0, ge=5, le=300)
+    music_request_cooldown: float = Field(default=300.0, ge=5, le=300)
     spotify_enabled: bool = False
     spotify_client_id: str = Field(default="", max_length=200)
     spotify_refresh_token: SecretStr | None = None

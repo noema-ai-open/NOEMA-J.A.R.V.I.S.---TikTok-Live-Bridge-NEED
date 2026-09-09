@@ -214,7 +214,7 @@ async def test_media_request_is_never_woken_into_processor_even_when_service_is_
 
 
 @pytest.mark.asyncio
-async def test_spotify_album_slash_command_is_not_blocked_by_natural_request_cooldown() -> None:
+async def test_slash_music_request_waits_for_rotation_and_rose_releases_it() -> None:
     service = LiveAIService(
         BridgeSettings(
             connect_on_start=False,
@@ -223,10 +223,11 @@ async def test_spotify_album_slash_command_is_not_blocked_by_natural_request_coo
             spotify_enabled=True,
             spotify_client_id="client-id",
             spotify_refresh_token="refresh-token",
-            music_request_cooldown=30,
+            music_request_cooldown=300,
         )
     )
-    service.tts = AckTTS()
+    tts = AckTTS()
+    service.tts = tts
     service._last_music_request_at = time.monotonic()
     scheduled: list[tuple[str, str | None]] = []
     service._schedule_spotify = lambda action, query=None: scheduled.append((str(action), query))  # type: ignore[method-assign]
@@ -239,7 +240,20 @@ async def test_spotify_album_slash_command_is_not_blocked_by_natural_request_coo
     )
     await asyncio.sleep(0)
 
+    assert scheduled == []
+    assert service._pending_music()["music-user"][0] == "Daft Punk Random Access Memories"
+
+    await service.add_mock_event(
+        "gift",
+        "Music Fan",
+        user_id="music-user",
+        gift_name="Rose",
+    )
+    await asyncio.sleep(0)
+
     assert scheduled == [("play_album", "Daft Punk Random Access Memories")]
+    assert "music-user" not in service._pending_music()
+    assert any("sofort" in text for text in tts.spoken)
     assert len(service.questions) == 0
 
 

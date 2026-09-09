@@ -29,11 +29,11 @@ jobs:
         run: |
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
-          ./scripts/build-installer.ps1 -Version 0.5.9 -Compiler $compiler
+          ./scripts/build-installer.ps1 -Version 0.6.0 -Compiler $compiler
       - name: Clean install smoke test
         shell: pwsh
         run: |
-          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.5.9.exe | Select-Object -First 1
+          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.6.0.exe | Select-Object -First 1
           if (-not $setup) { throw "Setup EXE fehlt." }
           $target = Join-Path $env:RUNNER_TEMP "noema-jarvis-clean"
           if (Test-Path $target) { Remove-Item $target -Recurse -Force }
@@ -72,12 +72,12 @@ jobs:
           New-Item -ItemType Directory -Force package/dist | Out-Null
           Copy-Item dist/NOEMA-JARVIS.exe package/dist/
           Copy-Item dist-setup/*.exe release/
-          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.5.9.zip
+          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.6.0.zip
           Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content release/SHA256.txt
       - name: Publish downloads
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "windows-0.5.9-${{ github.run_number }}"
-          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.5.9 Windows Setup" --notes "JARVIS bringt gelegentlich natürliche Community-Hinweise zu Likes, Follows, Teilen oder freiwilligen Geschenken ein, ohne zu drängen. Vulgäre sexualisierte Provokationen und Beschimpfungen werden kurz und bestimmt moderiert, während sachliche medizinische oder biologische Fragen normal beantwortet werden. Neue Installationen behalten standardmäßig 16 statt 10 letzte Gesprächszüge pro Nutzer für besseren Kontext; bestehende Nutzer können den Wert unter Settings > Letzte Turns auf 16 oder 20 setzen. Spotify-Fallback, DeepSeek/Qwen und Musik-/TikTok-Isolation bleiben erhalten. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge laeuft separat."
+          $tag = "windows-0.6.0-${{ github.run_number }}"
+          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.6.0 Windows Setup" --notes "JARVIS 0.6.0 bringt eine echte Musikrotation statt Sekundenwechseln: normale TikTok-Musikwünsche respektieren jetzt den einstellbaren Musikwunsch-Cooldown, standardmäßig fünf Minuten. Der bisherige 30-Sekunden-Standard wird beim Laden automatisch auf fünf Minuten migriert. Wartende Musikwünsche werden pro Nutzer vorgemerkt. Sendet derselbe Nutzer ein Geschenk wie eine Rose, wird sein wartender Musikwunsch sofort priorisiert; kommt das Geschenk zuerst, gilt die Sofort-Priorität kurz für den nächsten Musikwunsch. Zusätzlich bringt JARVIS etwa alle 2,5 Minuten einen kurzen Live-Hinweis zu Likes, Teilen, Folgen oder Musiksteuerung, solange der Stream verbunden und JARVIS gerade idle ist. Der System-Prompt wurde für natürlichere Community-Interaktion nachgeschärft. DeepSeek/Qwen-Failover, Spotify-Fallback und Musik-/TikTok-Isolation bleiben erhalten. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge läuft separat."

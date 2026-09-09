@@ -66,6 +66,11 @@ class RuntimeSettingsStore:
             if not isinstance(payload, dict):
                 return base
             allowed = {key: value for key, value in payload.items() if key in PERSISTED_FIELDS}
+            # 0.6 migration: 30 seconds was the old default and caused rapid
+            # song replacement in busy TikTok chats. Preserve custom values,
+            # but move the legacy default to the new five-minute rotation.
+            if allowed.get("music_request_cooldown") in {30, 30.0}:
+                allowed["music_request_cooldown"] = 300.0
             merged = base.model_dump()
             merged.update(allowed)
             return BridgeSettings.model_validate(merged)

@@ -35,6 +35,18 @@ def test_runtime_settings_and_keys_survive_reload(tmp_path) -> None:
     assert raw["spotify_refresh_token"] == "test-refresh-token"
 
 
+def test_legacy_30_second_music_default_migrates_to_five_minutes(tmp_path) -> None:
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps({"music_request_cooldown": 30.0}),
+        encoding="utf-8",
+    )
+
+    loaded = RuntimeSettingsStore(path).load(BridgeSettings())
+
+    assert loaded.music_request_cooldown == 300.0
+
+
 def test_invalid_settings_file_falls_back_without_crashing(tmp_path) -> None:
     path = tmp_path / "settings.json"
     path.write_text("not-json", encoding="utf-8")
