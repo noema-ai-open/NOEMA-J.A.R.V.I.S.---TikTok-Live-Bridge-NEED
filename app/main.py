@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api import router
-from app.resilient_service import LiveAIService
+from app.guarded_service import LiveAIService
 from app.settings import BridgeSettings
 from app.settings_store import RuntimeSettingsStore
 
