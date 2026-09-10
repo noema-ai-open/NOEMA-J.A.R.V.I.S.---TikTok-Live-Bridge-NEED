@@ -29,11 +29,11 @@ jobs:
         run: |
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
-          ./scripts/build-installer.ps1 -Version 0.6.1 -Compiler $compiler
+          ./scripts/build-installer.ps1 -Version 0.6.2 -Compiler $compiler
       - name: Clean install smoke test
         shell: pwsh
         run: |
-          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.6.1.exe | Select-Object -First 1
+          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.6.2.exe | Select-Object -First 1
           if (-not $setup) { throw "Setup EXE fehlt." }
           $target = Join-Path $env:RUNNER_TEMP "noema-jarvis-clean"
           if (Test-Path $target) { Remove-Item $target -Recurse -Force }
@@ -72,12 +72,12 @@ jobs:
           New-Item -ItemType Directory -Force package/dist | Out-Null
           Copy-Item dist/NOEMA-JARVIS.exe package/dist/
           Copy-Item dist-setup/*.exe release/
-          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.6.1.zip
+          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.6.2.zip
           Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content release/SHA256.txt
       - name: Publish downloads
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "windows-0.6.1-${{ github.run_number }}"
-          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.6.1 Windows Setup" --notes "JARVIS 0.6.1 macht die Musikrotation vollständig: vorgemerkte Musikwünsche starten nach Ablauf des Intervalls jetzt automatisch. Der Standard wurde von fünf auf zwei Minuten reduziert. Unter Settings kann die Musikrotation auf AN oder AUS gestellt werden; AUS bedeutet, dass neue Musikwünsche sofort durchgehen. Beim Upgrade werden die bisherigen 30- und 300-Sekunden-Standardwerte auf 120 Sekunden migriert, eigene Intervalle bleiben erhalten. Die Rose-Sofortpriorität bleibt bei aktiver Rotation bestehen. DeepSeek/Qwen-Failover, Live-Engagement und Musik-/TikTok-Isolation bleiben erhalten. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge läuft separat."
+          $tag = "windows-0.6.2-${{ github.run_number }}"
+          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.6.2 Windows Setup" --notes "JARVIS 0.6.2 begrenzt Musikwunsch-Spam pro Zuschauer. Jeder Nutzer kann bei aktiver Rotation nur noch einen offenen Musikwunsch halten; weitere /musik-Befehle ändern diesen Slot nicht mehr. Zusätzlich gilt pro Nutzer ein kurzer 20-Sekunden-Befehls-Cooldown, damit auch bei ausgeschalteter Rotation niemand den Player mit schnellen Musikwünschen fluten kann. Geschenk-Priorität bleibt davon ausgenommen: ein vorhandener Priority-Slot kann den Musikwunsch weiterhin sofort freigeben. Mehrere Geschenk-Events stapeln keine Warteschlange, da die Priorität pro Nutzer nur als einzelner Slot geführt wird. Die automatische Zwei-Minuten-Rotation, DeepSeek/Qwen-Failover, Live-Engagement und Musik-/TikTok-Isolation bleiben erhalten. Python ist nicht erforderlich. Die NOEMA TikTok Live Bridge läuft separat."
