@@ -642,11 +642,22 @@ class LiveAIService:
                 self.last_latency_ms = round((time.perf_counter() - started) * 1000)
                 self.llm_connected = True
                 self.current_answer = answer
-                await self.tts.speak(answer)
+                self.current_question = None
+                try:
+                    await self.tts.speak(answer)
+                except RuntimeError as exc:
+                    # TTS is an optional output path. A voice-engine or bridge
+                    # failure must never turn a successful LLM answer into a
+                    # fatal JARVIS ERROR state.
+                    self.tts_speaking = False
+                    self._speaking_until = 0.0
+                    self.state = JarvisState.IDLE
+                    self.last_error = f"TTS: {exc}"
+                    self._publish_status()
+                    return
                 self.tts_speaking = True
                 self._speaking_until = time.monotonic() + 1.0
                 self.state = JarvisState.SPEAKING
-                self.current_question = None
                 self.last_error = None
                 self._publish_status()
                 return
