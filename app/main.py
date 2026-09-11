@@ -15,8 +15,11 @@ from app.settings_store import RuntimeSettingsStore
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
-_CHAT_MUSIC_GUARD = '<script src="/static/chat-music-guard.js"></script>'
-_MUSIC_CONTINUITY_GUARD = '<script src="/static/music-continuity-guard.js"></script>'
+# app.js is deferred in index.html. These guards must also be deferred so they
+# execute after app.js in document order. Otherwise music-continuity-guard.js
+# runs too early, sees no searchAndPlayYouTube function, and silently exits.
+_CHAT_MUSIC_GUARD = '<script defer src="/static/chat-music-guard.js"></script>'
+_MUSIC_CONTINUITY_GUARD = '<script defer src="/static/music-continuity-guard.js"></script>'
 _SHOW_MODE_LAYOUT = '<link rel="stylesheet" href="/static/show-mode-layout.css">'
 
 

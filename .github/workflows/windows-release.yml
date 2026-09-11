@@ -29,11 +29,11 @@ jobs:
         run: |
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
-          ./scripts/build-installer.ps1 -Version 0.6.3 -Compiler $compiler
+          ./scripts/build-installer.ps1 -Version 0.6.4 -Compiler $compiler
       - name: Clean install smoke test
         shell: pwsh
         run: |
-          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.6.3.exe | Select-Object -First 1
+          $setup = Get-ChildItem dist-setup/NOEMA-JARVIS-Setup-0.6.4.exe | Select-Object -First 1
           if (-not $setup) { throw "Setup EXE fehlt." }
           $target = Join-Path $env:RUNNER_TEMP "noema-jarvis-clean"
           if (Test-Path $target) { Remove-Item $target -Recurse -Force }
@@ -72,12 +72,12 @@ jobs:
           New-Item -ItemType Directory -Force package/dist | Out-Null
           Copy-Item dist/NOEMA-JARVIS.exe package/dist/
           Copy-Item dist-setup/*.exe release/
-          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.6.3.zip
+          Compress-Archive -Path package/*,package/.env.example,package/.gitignore -DestinationPath release/NOEMA-JARVIS-Komplett-0.6.4.zip
           Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content release/SHA256.txt
       - name: Publish downloads
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "windows-0.6.3-${{ github.run_number }}"
-          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.6.3 Windows Setup" --notes "JARVIS 0.6.3 behebt den LIVE-Fehler nach erfolgreichen KI-Antworten: Ein Ausfall oder eine Fehlkonfiguration der TikTok-Bridge-TTS setzt JARVIS nicht mehr auf ERROR. Die Textantwort bleibt erhalten, der Live-Prozessor läuft weiter und der konkrete TTS-HTTP-Fehler wird separat angezeigt. OpenRouter/LLM, Zwei-Minuten-Musikrotation, Geschenk-Priorität und Spam-Schutz bleiben unverändert."
+          $tag = "windows-0.6.4-${{ github.run_number }}"
+          gh release create $tag release/* --target "${{ github.sha }}" --title "JARVIS 0.6.4 Windows Setup" --notes "JARVIS 0.6.4 behebt den Musikwechsel im YouTube-Player: Der Music-Continuity-Guard wurde bisher vor app.js ausgeführt und beendete sich deshalb wirkungslos. Die Guards werden jetzt ebenfalls deferred geladen und laufen in korrekter Reihenfolge nach app.js. Damit bleibt der aktuell laufende Titel während der Suche nach dem nächsten Wunsch erhalten, bis ein neuer spielbarer Treffer tatsächlich geladen wird. Zwei-Minuten-Rotation, Geschenk-Priorität, Spam-Schutz und TTS-Fehlerbehandlung bleiben erhalten."
