@@ -84,6 +84,17 @@ class TTSClient:
                 f"{self.bridge_url}/tts/test", json={"text": cleaned}, timeout=timeout
             )
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = ""
+            try:
+                payload = exc.response.json()
+                detail = str(payload.get("detail", "")).strip()
+            except (ValueError, TypeError, AttributeError):
+                detail = ""
+            suffix = f": {detail}" if detail else ""
+            raise RuntimeError(
+                f"TTS request failed (HTTP {exc.response.status_code}{suffix})"
+            ) from exc
         except httpx.HTTPError as exc:
             raise RuntimeError(f"TTS request failed ({type(exc).__name__})") from exc
         finally:
